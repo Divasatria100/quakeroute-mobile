@@ -1,0 +1,52 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quakeroute-app
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: quakeroute
+      DB_USERNAME: quakeroute
+      DB_PASSWORD: secret
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/var/www/html
+      - /var/www/html/vendor
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - quakeroute
+
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: quakeroute-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: quakeroute
+      POSTGRES_USER: quakeroute
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quakeroute -d quakeroute"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - quakeroute
+
+volumes:
+  pgdata: {}
+
+networks:
+  quakeroute:
+    driver: bridge
