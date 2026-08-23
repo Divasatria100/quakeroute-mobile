@@ -5,7 +5,11 @@ RUN apt-get update && apt-get install -y \
     libzip-dev \
     unzip \
     git \
- && docker-php-ext-install pdo_pgsql pgsql zip \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+ && docker-php-ext-configure gd --with-freetype --with-jpeg \
+ && docker-php-ext-install pdo_pgsql pgsql zip gd \
  && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
