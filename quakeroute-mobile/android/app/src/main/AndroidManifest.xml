@@ -42,4 +42,7 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
+    <!-- FR-001 (display user location) — geolocator runtime permissions -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 </manifest>

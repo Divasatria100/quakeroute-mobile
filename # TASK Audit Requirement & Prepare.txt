@@ -1,0 +1,778 @@
+# TASK: Audit Requirement & Prepare Flutter Mobile Implementation Plan
+
+Kamu akan membantu mengimplementasikan bagian:
+
+6. Flutter Mobile
+├── Foundation
+├── Dynamic Safety Map
+├── Destination Selection
+├── Route Visualization
+├── Hazard Reporting
+├── Hazard Review
+└── Emergency Simulation
+
+Namun, JANGAN langsung melakukan implementasi atau mengubah kode.
+
+Tahap pertama yang WAJIB kamu lakukan adalah membaca dan mengaudit seluruh requirement/specification yang relevan terlebih dahulu.
+
+==================================================
+1. ATURAN UTAMA
+==================================================
+
+Jangan langsung coding.
+
+Jangan membuat UI berdasarkan asumsi pribadi.
+
+Jangan membuat feature baru yang tidak ada di requirement.
+
+Jangan mengubah requirement.
+
+Jangan mengimplementasikan backend, database, AI, risk engine, atau routing algorithm.
+
+Sebelum implementasi, kamu harus:
+
+1. Menemukan dan membaca seluruh dokumen requirement yang relevan.
+2. Memahami hubungan antar requirement.
+3. Mengidentifikasi requirement yang berkaitan dengan Flutter Mobile.
+4. Melakukan audit terhadap scope implementasi.
+5. Mengidentifikasi dependency dengan backend/API.
+6. Mengidentifikasi bagian yang belum jelas atau berpotensi conflict.
+7. Membuat implementation plan.
+8. STOP dan tunggu konfirmasi sebelum melakukan perubahan kode.
+
+==================================================
+2. DOKUMEN YANG HARUS DIBACA
+==================================================
+
+Cari seluruh dokumentasi project yang tersedia di repository.
+
+Prioritaskan dokumen berikut jika tersedia:
+
+- Product Specification / PRD
+- System Design
+- Software Requirements Specification / SRS
+- UI/UX Specification
+- API Specification
+- Database Specification
+- Domain / Risk Model
+- Simulation / Validation Specification
+- Architecture documentation
+- Flutter/mobile-specific documentation
+
+Urutan prioritas untuk menentukan UI/UX:
+
+UI/UX Specification
+        ↓
+SRS
+        ↓
+PRD
+        ↓
+System Design
+
+Namun jangan hanya membaca UI/UX Specification secara terisolasi.
+
+UI harus dipahami dalam konteks keseluruhan system.
+
+Jika terdapat conflict antar dokumen, JANGAN langsung memilih sendiri.
+
+Catat conflict tersebut dan jelaskan:
+
+- Requirement A
+- Requirement B
+- Conflict
+- Impact terhadap Flutter
+- Recommended decision
+
+==================================================
+3. AUDIT SCOPE FLUTTER MOBILE
+==================================================
+
+Setelah membaca dokumen, audit seluruh scope berikut:
+
+6. Flutter Mobile
+├── Foundation
+├── Dynamic Safety Map
+├── Destination Selection
+├── Route Visualization
+├── Hazard Reporting
+├── Hazard Review
+└── Emergency Simulation
+
+Untuk SETIAP bagian, identifikasi:
+
+### A. Requirement
+
+Apa requirement yang secara eksplisit meminta feature tersebut?
+
+### B. Screen
+
+Screen/page apa yang diperlukan?
+
+### C. User Flow
+
+Bagaimana user berpindah dari satu screen/state ke screen lainnya?
+
+### D. UI Components
+
+Component apa saja yang diperlukan?
+
+### E. Interaction
+
+Apa yang dapat dilakukan user?
+
+### F. UI State
+
+Identifikasi state seperti:
+
+- initial
+- loading
+- success
+- empty
+- error
+- disabled
+- selected
+- submitting
+- processing
+- completed
+- unavailable
+
+Gunakan hanya state yang memang relevan dengan requirement.
+
+### G. Data Requirements
+
+Data apa yang harus ditampilkan oleh UI?
+
+### H. Backend/API Dependency
+
+Apakah UI membutuhkan:
+
+- API endpoint
+- response data
+- location data
+- hazard data
+- route data
+- simulation state
+- report status
+- AI result
+- risk score
+
+Jika iya, identifikasi dependency-nya.
+
+### I. Business Logic Boundary
+
+Tentukan dengan jelas apakah logic tersebut:
+
+Flutter UI responsibility
+
+ATAU
+
+Backend/Core System responsibility.
+
+Contoh:
+
+Flutter:
+- menampilkan hazard
+- menampilkan severity
+- menampilkan route
+- menerima input report
+- menampilkan simulation result
+
+Backend:
+- menentukan hazard severity
+- AI hazard extraction
+- menghitung risk
+- menghitung route
+- menentukan route penalty
+- melakukan route recalculation
+- memproses simulation logic
+
+Jangan memindahkan backend responsibility ke Flutter hanya karena UI membutuhkannya.
+
+==================================================
+4. KHUSUS UI/UX SPECIFICATION
+==================================================
+
+Baca UI/UX Specification dengan sangat teliti.
+
+Jangan hanya mengambil nama screen.
+
+Ekstrak detail seperti:
+
+- layout
+- hierarchy
+- navigation
+- CTA
+- button
+- form
+- map interaction
+- marker behavior
+- bottom sheet
+- modal
+- filter
+- status indicator
+- severity visualization
+- route visualization
+- warning
+- confirmation
+- error handling
+- loading behavior
+- empty state
+- accessibility
+- responsive behavior jika ada
+- user flow
+- interaction pattern
+
+Jika UI/UX Specification menentukan behavior tertentu, ikuti specification tersebut.
+
+Jangan mengganti desain hanya karena kamu memiliki preferensi UI sendiri.
+
+Jika ada bagian yang tidak ditentukan oleh specification, tandai sebagai:
+
+"UNSPECIFIED"
+
+Jangan langsung mengarang requirement.
+
+==================================================
+5. AUDIT USER FLOW
+==================================================
+
+Buat mapping user flow berdasarkan requirement.
+
+Contoh format:
+
+User
+ ↓
+Safety Map
+ ↓
+Select Destination
+ ↓
+Destination Confirmation
+ ↓
+Request Route
+ ↓
+Route Visualization
+ ↓
+Navigation / Monitoring
+ ↓
+Hazard Encounter
+ ↓
+Hazard Review / Report
+
+Gunakan flow aktual dari dokumentasi.
+
+Jangan mengasumsikan flow di atas benar jika dokumentasi menunjukkan flow yang berbeda.
+
+Identifikasi:
+
+- entry point
+- navigation
+- user action
+- system response
+- next state
+- failure state
+
+==================================================
+6. AUDIT DATA FLOW
+==================================================
+
+Buat data flow antara Flutter dan backend.
+
+Contoh:
+
+Flutter
+  ↓
+GET map data
+  ↓
+Laravel API
+  ↓
+Database
+  ↓
+Map response
+  ↓
+Flutter
+  ↓
+Render markers
+
+Untuk route:
+
+Flutter
+  ↓
+Destination
+  ↓
+Laravel API
+  ↓
+Risk & Routing Engine
+  ↓
+Route result
+  ↓
+Flutter
+  ↓
+Render route
+
+Untuk hazard report:
+
+Flutter
+  ↓
+Report input
+  ↓
+Laravel API
+  ↓
+AI / Hazard Processing
+  ↓
+Structured Hazard
+  ↓
+Risk Model
+  ↓
+Updated hazard/risk
+  ↓
+Flutter
+
+Gunakan architecture aktual dari dokumentasi.
+
+Tujuan audit ini adalah memastikan Flutter tidak mengimplementasikan logic yang sebenarnya menjadi tanggung jawab backend.
+
+==================================================
+7. API DEPENDENCY AUDIT
+==================================================
+
+Jika API Specification tersedia, cocokkan UI requirement dengan API contract.
+
+Untuk setiap feature, identifikasi:
+
+- endpoint
+- HTTP method
+- request
+- response
+- required parameters
+- error response
+- loading behavior
+- empty response behavior
+
+Contoh:
+
+Feature:
+Route Visualization
+
+Dependency:
+
+GET /routes
+
+Request:
+destination
+current_location
+
+Response:
+route
+distance
+duration
+risk
+hazards
+
+Jika endpoint belum tersedia:
+
+JANGAN membuat endpoint baru.
+
+Tandai:
+
+API DEPENDENCY:
+NOT IMPLEMENTED / PENDING
+
+Kemudian gunakan mock data hanya untuk kebutuhan UI development.
+
+==================================================
+8. IMPLEMENTATION BOUNDARY
+==================================================
+
+Buat pembagian responsibility yang eksplisit.
+
+### Flutter Responsibility
+
+Contoh:
+
+- UI
+- navigation
+- interaction
+- form
+- map rendering
+- marker rendering
+- polyline rendering
+- loading/error/empty state
+- API consumption
+- presentation state
+
+### Backend Responsibility
+
+Contoh:
+
+- API
+- database
+- business rules
+- AI processing
+- hazard extraction
+- risk calculation
+- route calculation
+- route recalculation
+- simulation engine
+
+Jika sebuah requirement berada di boundary antara keduanya, jelaskan boundary tersebut.
+
+==================================================
+9. REQUIREMENT TRACEABILITY
+==================================================
+
+Buat tabel:
+
+| Flutter Feature | Requirement Source | UI Requirement | Data Needed | API Dependency | Backend Logic | Status |
+|---|---|---|---|---|---|---|
+
+Pastikan seluruh feature berikut memiliki mapping:
+
+- Foundation
+- Dynamic Safety Map
+- Destination Selection
+- Route Visualization
+- Hazard Reporting
+- Hazard Review
+- Emergency Simulation
+
+Status dapat berupa:
+
+- CLEAR
+- PARTIALLY DEFINED
+- MISSING
+- CONFLICT
+- BLOCKED
+
+==================================================
+10. IDENTIFY GAPS
+==================================================
+
+Cari requirement yang:
+
+- belum jelas
+- saling bertentangan
+- tidak memiliki API contract
+- tidak memiliki data model
+- tidak memiliki UI specification
+- memiliki dependency yang belum tersedia
+- berpotensi menyebabkan rework
+- berpotensi membuat Flutter mengambil business logic backend
+
+Untuk setiap gap:
+
+Gap:
+...
+
+Impact:
+...
+
+Recommendation:
+...
+
+Blocking:
+YES / NO
+
+Jangan memperbaiki gap tersebut secara otomatis.
+
+==================================================
+11. IDENTIFY ASSUMPTIONS
+==================================================
+
+Buat daftar semua assumption yang diperlukan untuk implementasi.
+
+Contoh:
+
+ASSUMPTION:
+API route response menyediakan polyline.
+
+ATAU:
+
+ASSUMPTION:
+Current user location tersedia melalui device location service.
+
+Namun:
+
+Jangan mengubah assumption menjadi requirement.
+
+Tandai assumption yang perlu dikonfirmasi.
+
+==================================================
+12. IMPLEMENTATION PLAN
+==================================================
+
+Setelah audit selesai, buat implementation plan.
+
+Contoh:
+
+Phase 1
+Foundation
+
+Phase 2
+Dynamic Safety Map
+
+Phase 3
+Destination Selection
+
+Phase 4
+Route Visualization
+
+Phase 5
+Hazard Reporting
+
+Phase 6
+Hazard Review
+
+Phase 7
+Emergency Simulation
+
+Untuk setiap phase jelaskan:
+
+- files/components yang kemungkinan dibuat/diubah
+- dependency
+- data needed
+- API dependency
+- UI states
+- integration point
+- testing requirement
+
+Jangan mengubah file apa pun pada tahap ini.
+
+==================================================
+13. EXISTING CODE AUDIT
+==================================================
+
+Setelah requirement audit, inspect existing Flutter code.
+
+Cari:
+
+- existing screens
+- existing widgets
+- routing
+- theme
+- state management
+- models
+- services
+- repositories
+- API clients
+- map implementation
+- existing dependencies
+
+Tujuan:
+
+Jangan membuat ulang sesuatu yang sudah tersedia.
+
+Identifikasi:
+
+KEEP
+MODIFY
+CREATE
+REMOVE
+
+Namun jangan melakukan perubahan.
+
+==================================================
+14. CHECK FOR OVERLAP
+==================================================
+
+Pastikan implementasi Flutter tidak mengambil scope:
+
+- Database Implementation
+- AI Hazard Understanding
+- Risk & Routing Engine
+- Backend
+- Integration business logic
+
+Flutter boleh melakukan API consumption.
+
+Flutter boleh melakukan presentation transformation yang sederhana.
+
+Flutter TIDAK boleh menghitung:
+
+- risk score
+- hazard penalty
+- uncertainty penalty
+- route cost
+- shortest path
+- route safety
+- hazard classification
+- AI extraction
+
+kecuali requirement secara eksplisit menyatakan sebaliknya.
+
+==================================================
+15. FINAL AUDIT REPORT
+==================================================
+
+Setelah semua audit selesai, berikan laporan dengan struktur:
+
+# Flutter Mobile Requirement Audit
+
+## 1. Documents Reviewed
+
+Daftar seluruh dokumen yang dibaca.
+
+## 2. Requirement Summary
+
+Ringkasan requirement Flutter.
+
+## 3. Feature Audit
+
+### Foundation
+...
+
+### Dynamic Safety Map
+...
+
+### Destination Selection
+...
+
+### Route Visualization
+...
+
+### Hazard Reporting
+...
+
+### Hazard Review
+...
+
+### Emergency Simulation
+...
+
+## 4. User Flow
+
+...
+
+## 5. Data Flow
+
+...
+
+## 6. API Dependencies
+
+...
+
+## 7. Responsibility Boundary
+
+### Flutter
+...
+
+### Backend
+...
+
+## 8. Requirement Traceability
+
+[TABLE]
+
+## 9. Gaps
+
+...
+
+## 10. Conflicts
+
+...
+
+## 11. Assumptions
+
+...
+
+## 12. Existing Code Assessment
+
+KEEP / MODIFY / CREATE
+
+## 13. Proposed Implementation Plan
+
+...
+
+## 14. Risks / Potential Rework
+
+...
+
+## 15. Confirmation Required
+
+Berikan daftar hal yang perlu dikonfirmasi sebelum coding.
+
+==================================================
+16. CRITICAL STOP CONDITION
+==================================================
+
+SETELAH AUDIT SELESAI:
+
+STOP.
+
+Jangan:
+
+- membuat file
+- mengubah file
+- menghapus file
+- install dependency
+- mengubah dependency
+- membuat API
+- mengubah backend
+- melakukan refactoring
+- mulai coding UI
+
+Tunggu konfirmasi dari saya.
+
+Di akhir laporan, tuliskan:
+
+"Requirement audit selesai. Saya belum melakukan perubahan kode.
+Saya menunggu konfirmasi sebelum memulai implementasi."
+
+HANYA setelah saya memberikan konfirmasi eksplisit seperti:
+
+"Proceed"
+"Implementasikan"
+"Mulai Phase X"
+atau instruksi implementasi yang setara,
+
+kamu boleh mulai melakukan implementation sesuai hasil audit.
+
+==================================================
+17. PRINCIPLE
+==================================================
+
+Prioritas utama:
+
+REQUIREMENT
+    ↓
+AUDIT
+    ↓
+TRACEABILITY
+    ↓
+BOUNDARY
+    ↓
+IMPLEMENTATION PLAN
+    ↓
+CONFIRMATION
+    ↓
+IMPLEMENTATION
+
+Bukan:
+
+REQUIREMENT
+    ↓
+ASSUMPTION
+    ↓
+CODING
+
+Jangan melakukan speculative implementation.
+
+Jika requirement tidak jelas, katakan tidak jelas.
+
+Jika API belum tersedia, katakan belum tersedia.
+
+Jika ada conflict, laporkan.
+
+Jika sebuah feature membutuhkan keputusan dari developer, minta konfirmasi.
+
+Tujuan tahap ini bukan menghasilkan kode.
+
+Tujuan tahap ini adalah memastikan bahwa ketika implementasi dimulai:
+
+1. Scope jelas.
+2. Requirement terlacak.
+3. UI sesuai specification.
+4. API dependency jelas.
+5. Business logic boundary jelas.
+6. Tidak terjadi overlap dengan backend/core system.
+7. Tidak terjadi unnecessary rework.
+8. Implementasi dapat dilakukan secara paralel dengan development backend.

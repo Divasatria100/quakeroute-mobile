@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 
+import '../utils/env_config.dart';
 import 'api_exception.dart';
 
 /// Dio-based REST client — single networking layer for all
@@ -11,12 +11,12 @@ import 'api_exception.dart';
 class ApiClient {
   ApiClient({Dio? dio}) : _dio = dio ?? Dio() {
     _dio.options.baseUrl =
-        dotenv.maybeGet('API_BASE_URL') ?? 'http://10.0.2.2:8000/api/v1';
+        EnvConfig.maybeGet('API_BASE_URL') ?? 'http://10.0.2.2:8000/api/v1';
     _dio.options.connectTimeout = const Duration(seconds: 15);
     _dio.options.receiveTimeout = const Duration(seconds: 30);
     _dio.options.headers['Accept'] = 'application/json';
 
-    final sessionId = dotenv.maybeGet('SESSION_ID');
+    final sessionId = EnvConfig.maybeGet('SESSION_ID');
     if (sessionId != null && sessionId.isNotEmpty) {
       _dio.options.headers['X-Session-Id'] = sessionId;
     }

@@ -4,24 +4,30 @@ import 'package:latlong2/latlong.dart';
 import '../theme/qr_tokens.dart';
 
 /// Wraps flutter_map + overlay layers — §4.3 organism.
-/// Skeleton only for foundation; actual hazard/destination overlays wired in feature phase.
+/// Hazard/destination overlays are passed in by feature screens.
 class QRMapCanvas extends StatelessWidget {
   const QRMapCanvas({
     super.key,
     this.center,
     this.markers = const [],
     this.polylines = const [],
+    this.mapController,
   });
 
   final LatLng? center;
   final List<Marker> markers;
   final List<Polyline<Object>> polylines;
 
+  /// Optional externally-owned controller so screens can move the camera
+  /// (e.g. center on the user position, FR-001).
+  final MapController? mapController;
+
   static const _defaultCenter = LatLng(-6.20, 106.81);
 
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
+      mapController: mapController,
       options: MapOptions(
         initialCenter: center ?? _defaultCenter,
         initialZoom: 13,
