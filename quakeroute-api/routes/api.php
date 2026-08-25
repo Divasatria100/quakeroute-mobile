@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\DestinationController;
 use App\Http\Controllers\Api\V1\HazardController;
 use App\Http\Controllers\Api\V1\HazardReportController;
 use App\Http\Controllers\Api\V1\HazardSuggestionController;
+use App\Http\Controllers\Api\V1\RoadSegmentController;
 use App\Http\Controllers\Api\V1\RouteController;
 use App\Http\Controllers\Api\V1\SimulationController;
 use Illuminate\Support\Facades\Route;
@@ -24,6 +25,9 @@ Route::prefix('v1')->group(function () {
 
     // Destinations
     Route::get('/destinations', [DestinationController::class, 'index']);
+
+    // Road Segments (Dynamic Safety Map — road network geometry)
+    Route::get('/road-segments', [RoadSegmentController::class, 'index']);
 
     // Routing
     Route::post('/routes', [RouteController::class, 'store']);

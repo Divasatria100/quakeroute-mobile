@@ -5,12 +5,18 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../core/location/location_service.dart';
+import '../../../core/models/destination.dart';
 import '../../../core/models/hazard.dart' hide LatLng;
+import '../../../core/state/app_providers.dart';
 import '../../../core/state/ui_state.dart';
 import '../../../core/theme/qr_tokens.dart';
 import '../../../core/widgets/qr_map_canvas.dart';
 import '../../../core/widgets/qr_scaffold.dart';
+import '../../routing/controller/routing_controller.dart';
 import '../controller/hazard_map_controller.dart';
+import '../controller/road_segment_controller.dart';
+import 'widgets/destination_pin.dart';
+import 'widgets/hazard_detail_sheet.dart';
 import 'widgets/hazard_pin.dart';
 
 /// Home — Dynamic Safety Map (PRD §9.1, SRS FR-001–FR-004, ui-ux §8.2).
@@ -28,12 +34,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   final MapController _mapController = MapController();
   late final AppLifecycleListener _lifecycle;
   bool _wasHidden = false;
+  List<Destination> _destinations = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(hazardMapControllerProvider.notifier).load();
+      ref.read(roadSegmentControllerProvider.notifier).load();
+      _loadDestinations();
       _centerOnUser();
     });
     // ASUMSI-F: pause delta polling while backgrounded; on return to the
@@ -59,6 +68,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     super.dispose();
   }
 
+  Future<void> _loadDestinations() async {
+    try {
+      final list = await ref.read(destinationRepositoryProvider).getDestinations();
+      if (!mounted) return;
+      setState(() => _destinations = list);
+    } catch (_) {
+      // silent — map still usable without destinations
+    }
+  }
+
   /// FR-001: display user location. The HUD crosshair (§8.2 marker style)
   /// represents the user; centering the camera brings it into view.
   Future<void> _centerOnUser() async {
@@ -70,12 +89,43 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(hazardMapControllerProvider);
-    final markers = state.hazards.map(_pinFor).toList();
+    final roadState = ref.watch(roadSegmentControllerProvider);
+    final routingState = ref.watch(routingControllerProvider);
+    final route = routingState.routeState.asSuccess?.data;
+    final polylines = <Polyline<Object>>[];
+    // Road segments base layer — condition-driven styling
+    for (final seg in roadState.segments) {
+      final pts = seg.geometry.coordinates;
+      if (pts.length < 2) continue;
+  
+      polylines.add(
+        Polyline(
+          points: pts.map((c) => LatLng(c.lat, c.lng)).toList(),
+          color: colorForCondition(seg.condition),
+          strokeWidth: strokeForCondition(seg.condition),
+        ),
+      );
+    }
+    // Active route on top — distinct thick blue
+    final coords = route?.geometry?.coordinates;
+    if (coords != null && coords.length >= 2) {
+      polylines.add(
+        Polyline(
+          points: coords.map((c) => LatLng(c.lat, c.lng)).toList(),
+          color: QRTokens.semanticInfo,
+          strokeWidth: 5,
+        ),
+      );
+    }
+    final allMarkers = <Marker>[
+      ...state.hazards.map(_pinFor),
+      ..._destinations.map(_destinationPin),
+    ];
 
     return Scaffold(
       body: Stack(
         children: [
-          QRMapCanvas(markers: markers, mapController: _mapController),
+          QRMapCanvas(markers: allMarkers, polylines: polylines, mapController: _mapController),
           _buildTopHud(state),
           if (state.initialState is UiLoading<List<Hazard>>)
             const Positioned.fill(
@@ -113,7 +163,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     point: LatLng(h.location.lat, h.location.lng),
     width: 40,
     height: 40,
-    child: HazardPin(semantic: pinSemanticFor(h)),
+    child: GestureDetector(
+      onTap: () => showHazardDetailSheet(context, h.id),
+      child: HazardPin(semantic: pinSemanticFor(h)),
+    ),
+  );
+
+  Marker _destinationPin(Destination d) => Marker(
+    point: LatLng(d.location.lat, d.location.lng),
+    width: 36,
+    height: 36,
+    child: DestinationPin(
+      destination: d,
+      onTap: () => context.go('/destinations'),
+    ),
   );
 
   Widget _buildTopHud(HazardMapState state) {

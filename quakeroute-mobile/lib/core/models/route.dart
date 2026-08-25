@@ -13,6 +13,7 @@ class QuakeRoute {
     this.supersedesRouteId,
     this.supersededByRouteId,
     this.origin,
+    this.geometry,
   });
 
   final String id;
@@ -24,6 +25,10 @@ class QuakeRoute {
   final List<RouteSegment> segments;
   final DateTime createdAt;
   final LatLng? origin;
+  final RouteGeometry? geometry;
+
+  bool get hasGeometry =>
+      geometry != null && geometry!.coordinates.isNotEmpty;
 
   factory QuakeRoute.fromJson(Map<String, dynamic> json) {
     return QuakeRoute(
@@ -37,7 +42,35 @@ class QuakeRoute {
           .map((e) => RouteSegment.fromJson(e as Map<String, dynamic>))
           .toList(),
       createdAt: DateTime.parse(json['created_at'] as String),
+      geometry: json['geometry'] == null
+          ? null
+          : RouteGeometry.fromJson(json['geometry'] as Map<String, dynamic>),
     );
+  }
+}
+
+/// GeoJSON LineString — backend SRID 4326, coordinates as [lng, lat].
+/// Converted to [LatLng(lat,lng)] for flutter_map.
+class RouteGeometry {
+  const RouteGeometry({required this.type, required this.coordinates});
+
+  final String type;
+  final List<LatLng> coordinates;
+
+  factory RouteGeometry.fromJson(Map<String, dynamic> json) {
+    final type = json['type'] as String? ?? 'LineString';
+    final raw = json['coordinates'] as List<dynamic>? ?? [];
+    final coords = <LatLng>[];
+    for (final c in raw) {
+      if (c is List && c.length >= 2) {
+        final lng = (c[0] as num).toDouble();
+        final lat = (c[1] as num).toDouble();
+        if (lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+          coords.add(LatLng(lat, lng));
+        }
+      }
+    }
+    return RouteGeometry(type: type, coordinates: coords);
   }
 }
 

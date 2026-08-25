@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../features/destination/data/destination_repository.dart';
 import '../../features/map/data/hazard_repository.dart';
+import '../../features/map/data/road_segment_repository.dart';
 import '../../features/reporting/data/hazard_report_repository.dart';
 import '../../features/routing/data/route_repository.dart';
 import '../../features/simulation/data/simulation_repository.dart';
@@ -33,6 +34,10 @@ final hazardReportRepositoryProvider = Provider<HazardReportRepository>(
 
 final simulationRepositoryProvider = Provider<SimulationRepository>(
   (ref) => SimulationRepository(ref.watch(apiClientProvider)),
+);
+
+final roadSegmentRepositoryProvider = Provider<RoadSegmentRepository>(
+  (ref) => RoadSegmentRepository(ref.watch(apiClientProvider)),
 );
 
 // ── App-level state ──

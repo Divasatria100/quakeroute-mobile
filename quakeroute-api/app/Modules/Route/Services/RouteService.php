@@ -19,6 +19,7 @@ final class RouteService
     public function __construct(
         private readonly GraphBuilder $graphBuilder,
         private readonly RiskAwareRoutingService $routingService,
+        private readonly RouteGeometryService $geometryService,
     ) {}
 
     public function createRoute(Request $request, string $destinationId, array $origin): array
@@ -106,6 +107,8 @@ final class RouteService
                 'segment_routing_cost' => (float) $s->segment_routing_cost,
             ])->all();
 
+            $geometry = $this->geometryService->getGeometry($routeId);
+
             return [
                 'route_id' => $routeId,
                 'destination_id' => $destinationId,
@@ -113,6 +116,7 @@ final class RouteService
                 'supersedes_route_id' => $active?->id,
                 'total_cost' => (float) $result['total_cost'],
                 'segments' => $segments,
+                'geometry' => $geometry,
                 'created_at' => now()->toIso8601String(),
             ];
         });
@@ -134,6 +138,7 @@ final class RouteService
 
         $originLoc = DB::selectOne('SELECT ST_X(origin::geometry) as lng, ST_Y(origin::geometry) as lat FROM routes WHERE id = ?', [$routeId]);
         $supersededBy = DB::table('routes')->where('supersedes_route_id', $routeId)->first();
+        $geometry = $this->geometryService->getGeometry($routeId);
 
         return [
             'route_id' => $route->id,
@@ -143,6 +148,7 @@ final class RouteService
             'superseded_by_route_id' => $supersededBy?->id,
             'total_cost' => (float) $route->total_cost,
             'segments' => $segments,
+            'geometry' => $geometry,
             'created_at' => $route->created_at,
         ];
     }

@@ -24,6 +24,9 @@ abstract final class ApiEndpoints {
   static const activeRoute = '/routes/active';
   static String routeDetail(String routeId) => '/routes/$routeId';
 
+  // Road network
+  static const roadSegments = '/road-segments';
+
   // Emergency Simulation §8
   static const simulationScenarios = '/simulation/scenarios';
   static String simulationRunScenario(String scenarioId) =>
