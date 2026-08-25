@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -35,6 +37,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   late final AppLifecycleListener _lifecycle;
   bool _wasHidden = false;
   List<Destination> _destinations = [];
+  Timer? _bboxDebounce;
+  String? _lastBbox;
 
   @override
   void initState() {
@@ -64,8 +68,35 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   @override
   void dispose() {
+    _bboxDebounce?.cancel();
     _lifecycle.dispose();
     super.dispose();
+  }
+
+  String? _bboxFromCamera(MapCamera camera) {
+    try {
+      final bounds = camera.visibleBounds;
+      final sw = bounds.southWest;
+      final ne = bounds.northEast;
+      // Guard against world-wrap or zero-area bounds
+      if (sw.longitude == ne.longitude || sw.latitude == ne.latitude) return null;
+      return '${sw.longitude},${sw.latitude},${ne.longitude},${ne.latitude}';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _onPositionChanged(MapCamera camera, bool _) {
+    _bboxDebounce?.cancel();
+    _bboxDebounce = Timer(const Duration(milliseconds: 600), () {
+      if (!mounted) return;
+      final bbox = _bboxFromCamera(camera);
+      if (bbox == _lastBbox) return;
+      _lastBbox = bbox;
+      if (bbox == null) return;
+      ref.read(hazardMapControllerProvider.notifier).setBbox(bbox);
+      ref.read(roadSegmentControllerProvider.notifier).setBbox(bbox);
+    });
   }
 
   Future<void> _loadDestinations() async {
@@ -125,7 +156,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          QRMapCanvas(markers: allMarkers, polylines: polylines, mapController: _mapController),
+          QRMapCanvas(markers: allMarkers, polylines: polylines, mapController: _mapController, onPositionChanged: _onPositionChanged),
           _buildTopHud(state),
           if (state.initialState is UiLoading<List<Hazard>>)
             const Positioned.fill(

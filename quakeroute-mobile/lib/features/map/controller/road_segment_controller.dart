@@ -35,19 +35,26 @@ class RoadSegmentController extends StateNotifier<RoadSegmentState> {
   RoadSegmentController(this._ref) : super(const RoadSegmentState());
 
   final Ref _ref;
+  String? _bbox;
 
   Future<void> load() async {
     if (state.loading) return;
     state = const RoadSegmentState(loading: true);
     try {
       final repo = _ref.read(roadSegmentRepositoryProvider);
-      final list = await repo.getRoadSegments();
+      final list = await repo.getRoadSegments(bbox: _bbox);
       if (!mounted) return;
       state = RoadSegmentState(segments: list);
     } catch (_) {
       if (!mounted) return;
       state = const RoadSegmentState();
     }
+  }
+
+  Future<void> setBbox(String? bbox) async {
+    if (_bbox == bbox) return;
+    _bbox = bbox;
+    await load();
   }
 }
 

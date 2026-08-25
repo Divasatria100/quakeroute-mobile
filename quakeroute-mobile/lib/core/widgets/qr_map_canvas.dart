@@ -12,6 +12,7 @@ class QRMapCanvas extends StatelessWidget {
     this.markers = const [],
     this.polylines = const [],
     this.mapController,
+    this.onPositionChanged,
   });
 
   final LatLng? center;
@@ -21,6 +22,7 @@ class QRMapCanvas extends StatelessWidget {
   /// Optional externally-owned controller so screens can move the camera
   /// (e.g. center on the user position, FR-001).
   final MapController? mapController;
+  final void Function(MapCamera, bool)? onPositionChanged;
 
   static const _defaultCenter = LatLng(-6.20, 106.81);
 
@@ -31,6 +33,7 @@ class QRMapCanvas extends StatelessWidget {
       options: MapOptions(
         initialCenter: center ?? _defaultCenter,
         initialZoom: 13,
+        onPositionChanged: onPositionChanged,
       ),
       children: [
         TileLayer(

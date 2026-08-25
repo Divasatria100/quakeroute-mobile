@@ -64,6 +64,7 @@ class HazardMapController extends StateNotifier<HazardMapState> {
   final HazardRepository _repo;
   final PollingService _polling;
   bool _disposed = false;
+  String? _bbox;
 
   /// Every Nth poll tick performs a full silent reconcile instead of a
   /// delta fetch (ASUMSI-F: purges server-side deletions; ≈5 min at the
@@ -76,7 +77,7 @@ class HazardMapController extends StateNotifier<HazardMapState> {
     if (_disposed) return;
     state = state.copyWith(initialState: const UiLoading());
     try {
-      final hazards = await _repo.getHazards();
+      final hazards = await _repo.getHazards(bbox: _bbox);
       if (_disposed) return;
       state = state.copyWith(
         hazards: hazards,
@@ -93,12 +94,19 @@ class HazardMapController extends StateNotifier<HazardMapState> {
     }
   }
 
+  /// Update viewport bbox; triggers full refresh if changed. Null means full network.
+  Future<void> setBbox(String? bbox) async {
+    if (_bbox == bbox) return;
+    _bbox = bbox;
+    await refresh();
+  }
+
   /// Manual full refresh (pull/refresh button) — resets the delta cursor.
   Future<void> refresh() async {
     if (_disposed || state.refreshing) return;
     state = state.copyWith(refreshing: true, refreshError: null);
     try {
-      final hazards = await _repo.getHazards();
+      final hazards = await _repo.getHazards(bbox: _bbox);
       if (_disposed) return;
       _tickCount = 0;
       state = state.copyWith(
@@ -134,7 +142,7 @@ class HazardMapController extends StateNotifier<HazardMapState> {
     }
     final since = state.lastUpdated!;
     try {
-      final updates = await _repo.getHazards(updatedSince: since);
+      final updates = await _repo.getHazards(bbox: _bbox, updatedSince: since);
       if (_disposed || updates.isEmpty) {
         if (!_disposed && updates.isEmpty) {
           state = state.copyWith(lastUpdated: DateTime.now().toUtc());
@@ -163,7 +171,7 @@ class HazardMapController extends StateNotifier<HazardMapState> {
   /// foreground-resume; keeps last-known view on failure.
   Future<void> _applyServerList({required bool silent}) async {
     try {
-      final hazards = await _repo.getHazards();
+      final hazards = await _repo.getHazards(bbox: _bbox);
       if (_disposed) return;
       state = state.copyWith(
         hazards: hazards,
