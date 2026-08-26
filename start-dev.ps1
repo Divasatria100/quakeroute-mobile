@@ -172,6 +172,21 @@ if (-not $scenarioCount -or $scenarioCount -eq "0" -or ([int]::TryParse($scenari
     Write-Ok "Simulation scenarios already seeded ($scenarioCount)"
 }
 
+Write-Info "Checking road network..."
+$roadNodesRaw = docker compose -f $ComposeFile exec -T db psql -U quakeroute -d quakeroute -t -A -c "SELECT count(*) FROM road_nodes;" 2>$null
+if ($roadNodesRaw -is [array]) { $roadNodesRaw = ($roadNodesRaw | Select-Object -Last 1) }
+$roadNodesCount = ($roadNodesRaw -replace '\s','').Trim()
+$destRaw = docker compose -f $ComposeFile exec -T db psql -U quakeroute -d quakeroute -t -A -c "SELECT count(*) FROM destinations;" 2>$null
+if ($destRaw -is [array]) { $destRaw = ($destRaw | Select-Object -Last 1) }
+$destCount = ($destRaw -replace '\s','').Trim()
+if (-not $roadNodesCount -or $roadNodesCount -eq "0" -or -not $destCount -or $destCount -eq "0" -or ([int]::TryParse($roadNodesCount, [ref]$null) -and [int]$roadNodesCount -lt 6) -or ([int]::TryParse($destCount, [ref]$null) -and [int]$destCount -lt 5)) {
+    Write-Info "Seeding road network and destinations..."
+    $seedResult = docker compose -f $ComposeFile exec -T app php artisan db:seed --force 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Warn "Road network seed failed:`n$seedResult" } else { Write-Ok "Road network and destinations seeded" }
+} else {
+    Write-Ok "Road network already seeded (nodes $roadNodesCount, destinations $destCount)"
+}
+
 # 11. Flutter pub get (only if missing)
 if ($flutterAvailable) {
     Write-Info "Checking Flutter dependencies..."
