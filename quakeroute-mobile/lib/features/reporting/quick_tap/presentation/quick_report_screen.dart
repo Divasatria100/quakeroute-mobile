@@ -24,7 +24,10 @@ class QuickReportScreen extends ConsumerWidget {
       }
     });
     return Scaffold(
-      appBar: AppBar(title: const Text('Quick Report')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Quick Report'),
+      ),
       body: GridView.count(
         crossAxisCount: 2,
         padding: const EdgeInsets.all(QRTokens.spaceLg),

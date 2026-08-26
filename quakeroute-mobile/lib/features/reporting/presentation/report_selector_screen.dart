@@ -8,7 +8,10 @@ class ReportSelectorScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Report Hazard')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Report Hazard'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(QRTokens.spaceLg),
         children: [
@@ -16,19 +19,19 @@ class ReportSelectorScreen extends StatelessWidget {
             icon: Icons.photo_camera_outlined,
             title: 'Photo',
             subtitle: 'Lowest typing effort — AI Vision will propose a hazard',
-            onTap: () => context.go('/report/photo'),
+            onTap: () => context.push('/report/photo'),
           ),
           _ModeTile(
             icon: Icons.text_fields,
             title: 'Text',
             subtitle: 'Describe what you observed',
-            onTap: () => context.go('/report/text'),
+            onTap: () => context.push('/report/text'),
           ),
           _ModeTile(
             icon: Icons.touch_app_outlined,
             title: 'Quick Report',
             subtitle: 'Fastest — no typing',
-            onTap: () => context.go('/report/quick'),
+            onTap: () => context.push('/report/quick'),
           ),
           const _ModeTile(
             icon: Icons.mic_outlined,

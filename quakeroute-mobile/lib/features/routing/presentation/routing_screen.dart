@@ -45,6 +45,7 @@ class _RoutingScreenState extends ConsumerState<RoutingScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: const BackButton(),
         title: const Text('Route'),
         actions: [
           IconButton(
@@ -247,7 +248,7 @@ class _RoutingScreenState extends ConsumerState<RoutingScreen> {
                   children: [
                     Expanded(
                       child: OutlinedButton(
-                        onPressed: () => context.go('/destinations'),
+                        onPressed: () => context.push('/destinations'),
                         child: const Text('Change Destination'),
                       ),
                     ),

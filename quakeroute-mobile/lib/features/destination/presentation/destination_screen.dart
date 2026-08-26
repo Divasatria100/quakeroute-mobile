@@ -45,7 +45,7 @@ class _DestinationScreenState extends ConsumerState<DestinationScreen> {
           .read(destinationControllerProvider.notifier)
           .createRoute(destination);
       if (!mounted) return;
-      context.go('/route');
+      context.push('/route');
     } on ApiException catch (e) {
       if (!mounted) return;
       _showError(_routeErrorMessage(e));
@@ -128,7 +128,10 @@ class _DestinationScreenState extends ConsumerState<DestinationScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(destinationControllerProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Select Destination')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Select Destination'),
+      ),
       body: QRAsyncView<List<Destination>>(
         state: state.listState,
         onRetry: () =>

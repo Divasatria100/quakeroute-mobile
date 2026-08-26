@@ -26,7 +26,10 @@ class _TextReportScreenState extends ConsumerState<TextReportScreen> {
       }
     });
     return Scaffold(
-      appBar: AppBar(title: const Text('Text Report')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Text Report'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(QRTokens.spaceLg),
         child: Column(

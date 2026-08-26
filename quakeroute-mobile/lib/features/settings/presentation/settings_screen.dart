@@ -15,7 +15,10 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings & About')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Settings & About'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(QRTokens.spaceLg),
         children: [
@@ -34,7 +37,7 @@ class SettingsScreen extends StatelessWidget {
                 'baseline vs risk-aware routes.',
               ),
               trailing: const Icon(Icons.chevron_right),
-              onTap: () => context.go('/simulation'),
+              onTap: () => context.push('/simulation'),
             ),
           ),
           const SizedBox(height: QRTokens.spaceMd),

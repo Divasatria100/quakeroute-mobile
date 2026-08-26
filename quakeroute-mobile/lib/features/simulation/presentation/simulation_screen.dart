@@ -23,7 +23,10 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(simulationControllerProvider);
     return Scaffold(
-      appBar: AppBar(title: const Text('Emergency Simulation')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Emergency Simulation'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(QRTokens.spaceLg),
         child: _body(state),

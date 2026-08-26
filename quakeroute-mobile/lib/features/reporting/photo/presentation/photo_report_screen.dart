@@ -37,7 +37,10 @@ class _PhotoReportScreenState extends ConsumerState<PhotoReportScreen> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Photo Report')),
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Photo Report'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(QRTokens.spaceLg),
         child: _body(state),

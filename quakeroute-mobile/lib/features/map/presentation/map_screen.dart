@@ -180,7 +180,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.go('/report'),
+        onPressed: () => context.push('/report'),
         backgroundColor: QRTokens.accentCyan,
         foregroundColor: QRTokens.textOnAccent,
         icon: const Icon(Icons.add_alert_outlined),
@@ -206,7 +206,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     height: 36,
     child: DestinationPin(
       destination: d,
-      onTap: () => context.go('/destinations'),
+      onTap: () => context.push('/destinations'),
     ),
   );
 
@@ -233,7 +233,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
             const SizedBox(width: QRTokens.spaceSm),
             IconButton(
-              onPressed: () => context.go('/settings'),
+              onPressed: () => context.push('/settings'),
               icon: const Icon(Icons.settings_outlined),
               style: IconButton.styleFrom(backgroundColor: QRTokens.bgSurface),
             ),
@@ -413,14 +413,14 @@ class _DynamicBottomSheet extends ConsumerWidget {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => context.go('/destinations'),
+                    onPressed: () => context.push('/destinations'),
                     child: const Text('Select Destination'),
                   ),
                 ),
                 const SizedBox(width: QRTokens.spaceMd),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => context.go('/route'),
+                    onPressed: () => context.push('/route'),
                     child: const Text('View Route'),
                   ),
                 ),

@@ -14,6 +14,10 @@ class DisclaimerScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
+      appBar: AppBar(
+        leading: const BackButton(),
+        title: const Text('Disclaimer'),
+      ),
       backgroundColor: QRTokens.bgBase,
       body: SafeArea(
         child: Padding(
