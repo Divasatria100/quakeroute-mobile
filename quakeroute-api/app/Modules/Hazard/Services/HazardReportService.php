@@ -6,6 +6,7 @@ namespace App\Modules\Hazard\Services;
 
 use App\Modules\AI\Services\HazardUnderstandingService;
 use App\Modules\AI\Support\AIProviderException;
+use App\Modules\Route\Services\RouteRecalculationService;
 use App\Modules\Shared\Support\SessionHelper;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,7 @@ final class HazardReportService
 {
     public function __construct(
         private readonly HazardUnderstandingService $hazardUnderstandingService,
+        private readonly RouteRecalculationService $recalculationService,
     ) {}
 
     public function createPhotoReport(Request $request, string $photoUrl, array $location, ?string $note): array
@@ -115,6 +117,10 @@ final class HazardReportService
                 'updated_at' => now(),
             ]);
 
+            if ($roadSegmentId !== null) {
+                $this->recalculationService->recalculateForAffectedSegment($roadSegmentId);
+            }
+
             return [
                 'hazards' => [
                     [
@@ -176,6 +182,10 @@ final class HazardReportService
                 'reported_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            if ($roadSegmentId !== null) {
+                $this->recalculationService->recalculateForAffectedSegment($roadSegmentId);
+            }
 
             return [
                 'hazard_id' => $hazardId,

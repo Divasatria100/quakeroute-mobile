@@ -10,41 +10,36 @@ final class HazardQueryService
 {
     public function list(array $filters): array
     {
-        $query = DB::table('hazards');
+        $query = DB::table('hazards as i');
 
         if (isset($filters['status']) && $filters['status'] !== '') {
-            $query->where('status', $filters['status']);
+            $query->where('i.status', $filters['status']);
         }
 
         if (isset($filters['bbox']) && $filters['bbox'] !== null) {
             [$minLng, $minLat, $maxLng, $maxLat] = $filters['bbox'];
-            $query->whereRaw('ST_Intersects(location, ST_MakeEnvelope(?, ?, ?, ?, 4326)::geography)', [$minLng, $minLat, $maxLng, $maxLat]);
+            $query->whereRaw('ST_Intersects(i.location, ST_MakeEnvelope(?, ?, ?, ?, 4326)::geography)', [$minLng, $minLat, $maxLng, $maxLat]);
         }
 
         if (isset($filters['updated_since']) && $filters['updated_since'] !== '') {
-            $query->where('updated_at', '>=', $filters['updated_since']);
+            $query->where('i.updated_at', '>=', $filters['updated_since']);
         }
 
-        $rows = $query->orderBy('reported_at', 'desc')->limit(100)->get();
+        $rows = $query->selectRaw('i.*, ST_X(i.location::geometry) AS lng, ST_Y(i.location::geometry) AS lat')
+            ->orderBy('i.reported_at', 'desc')->limit(100)->get();
 
-        $hazards = [];
-        foreach ($rows as $row) {
-            $loc = DB::selectOne('SELECT ST_X(location::geometry) as lng, ST_Y(location::geometry) as lat FROM hazards WHERE id = ?', [$row->id]);
-            $hazards[] = [
-                'hazard_id' => $row->id,
-                'type' => $row->type,
-                'severity' => $row->severity,
-                'confidence' => (float) $row->confidence,
-                'road_impact' => $row->road_impact,
-                'status' => $row->status,
-                'location' => ['lat' => (float) $loc->lat, 'lng' => (float) $loc->lng],
-                'road_segment_id' => $row->road_segment_id,
-                'source' => $row->source,
-                'timestamp' => $row->reported_at,
-            ];
-        }
-
-        return $hazards;
+        return $rows->map(fn ($row) => [
+            'hazard_id' => $row->id,
+            'type' => $row->type,
+            'severity' => $row->severity,
+            'confidence' => (float) $row->confidence,
+            'road_impact' => $row->road_impact,
+            'status' => $row->status,
+            'location' => ['lat' => (float) $row->lat, 'lng' => (float) $row->lng],
+            'road_segment_id' => $row->road_segment_id,
+            'source' => $row->source,
+            'timestamp' => $row->reported_at,
+        ])->all();
     }
 
     public function detail(string $hazardId): array

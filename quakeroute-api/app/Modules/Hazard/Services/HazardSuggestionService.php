@@ -4,11 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Hazard\Services;
 
+use App\Modules\Route\Services\RouteRecalculationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class HazardSuggestionService
 {
+    public function __construct(
+        private readonly RouteRecalculationService $recalculationService,
+    ) {}
+
     public function confirm(string $suggestionId, ?array $edits): array
     {
         return DB::transaction(function () use ($suggestionId, $edits) {
@@ -63,6 +68,10 @@ final class HazardSuggestionService
                 'resulting_hazard_id' => $hazardId,
                 'resolved_at' => now(),
             ]);
+
+            if ($roadSegmentId !== null) {
+                $this->recalculationService->recalculateForAffectedSegment($roadSegmentId);
+            }
 
             return [
                 'hazard_id' => $hazardId,

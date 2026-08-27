@@ -16,16 +16,18 @@ final class GraphBuilder
     /**
      * Build adjacency list from database.
      *
+     * @param  array<int, string>  $excludeHazardIds  Hazards to ignore (e.g. injected simulation hazards when building a baseline graph)
      * @return array<string, array<int, array{to: string, cost: float, road_segment_id: string}>>
      */
-    public function buildFromDatabase(): array
+    public function buildFromDatabase(array $excludeHazardIds = []): array
     {
         $nodes = DB::table('road_nodes')->pluck('id')->all();
         $segments = DB::table('road_segments')->get();
         $hazards = DB::table('hazards')
-            ->select('road_segment_id', 'severity', 'confidence', 'road_impact', 'status')
+            ->select('id', 'road_segment_id', 'severity', 'confidence', 'road_impact', 'status')
             ->whereNotNull('road_segment_id')
             ->get()
+            ->reject(fn ($h) => in_array($h->id, $excludeHazardIds, true))
             ->groupBy('road_segment_id');
 
         $list = [];

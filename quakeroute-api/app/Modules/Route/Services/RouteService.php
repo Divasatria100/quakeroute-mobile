@@ -55,49 +55,7 @@ final class RouteService
                 }
             }
 
-            $routeId = (string) Str::uuid();
-            DB::table('routes')->insert([
-                'id' => $routeId,
-                'user_id' => $userId,
-                'destination_id' => $destinationId,
-                'origin' => DB::raw("ST_GeogFromText('POINT({$origin['lng']} {$origin['lat']})')"),
-                'status' => 'Active',
-                'supersedes_route_id' => $active?->id,
-                'total_cost' => $result['total_cost'],
-                'created_at' => now(),
-                'superseded_at' => null,
-            ]);
-
-            // Build route_segments with costs
-            $sequence = 0;
-            foreach ($result['road_segment_ids'] as $segId) {
-                $seg = DB::table('road_segments')->where('id', $segId)->first();
-                $hazards = DB::table('hazards')->where('road_segment_id', $segId)->get();
-                $hazCost = 0.0;
-                $uncCost = 0.0;
-                $roadImpacts = [];
-                foreach ($hazards as $h) {
-                    $roadImpacts[] = $h->road_impact;
-                }
-                // Calculate via service
-                $service = app(SegmentCostCalculator::class);
-                $hazList = $hazards->map(fn ($h) => ['severity' => $h->severity, 'confidence' => (float) $h->confidence, 'roadImpact' => $h->road_impact, 'status' => $h->status])->all();
-                $segmentCost = $service->calculate((float) $seg->base_travel_cost, $hazList);
-                // Derive penalties
-                $hazPenalty = app(HazardPenaltyCalculator::class)->calculateForSegment(array_map(fn ($h) => ['severity' => $h['severity'], 'confidence' => (float) $h['confidence']], $hazList));
-                $uncPenalty = app(UncertaintyPenaltyCalculator::class)->calculateForSegment(array_column($hazList, 'status'));
-
-                DB::table('route_segments')->insert([
-                    'id' => (string) Str::uuid(),
-                    'route_id' => $routeId,
-                    'road_segment_id' => $segId,
-                    'sequence_order' => $sequence++,
-                    'base_travel_cost' => $seg->base_travel_cost,
-                    'hazard_penalty' => $hazPenalty,
-                    'uncertainty_penalty' => $uncPenalty,
-                    'segment_routing_cost' => $segmentCost,
-                ]);
-            }
+            $routeId = $this->insertRouteWithSegments($userId, $destinationId, $origin, $result, $active?->id);
 
             $segments = DB::table('route_segments')->where('route_id', $routeId)->orderBy('sequence_order')->get()->map(fn ($s) => [
                 'road_segment_id' => $s->road_segment_id,
@@ -120,6 +78,78 @@ final class RouteService
                 'created_at' => now()->toIso8601String(),
             ];
         });
+    }
+
+    /**
+     * Persist a computed routing result as a route owned by no session user
+     * (used by the Simulation module). Does not supersede any existing route.
+     */
+    public function persistSimulationRoute(string $destinationId, array $origin, array $result, array $excludeHazardIds = []): string
+    {
+        return DB::transaction(function () use ($destinationId, $origin, $result, $excludeHazardIds) {
+            return $this->insertRouteWithSegments(null, $destinationId, $origin, $result, null, $excludeHazardIds);
+        });
+    }
+
+    /**
+     * Persist a replacement route for an existing user (hazard-driven
+     * recalculation). The new route supersedes the given previous route.
+     */
+    public function persistReplacementRoute(string $userId, string $destinationId, array $origin, array $result, string $supersedesRouteId): string
+    {
+        return $this->insertRouteWithSegments($userId, $destinationId, $origin, $result, $supersedesRouteId);
+    }
+
+    /**
+     * Insert the routes row and its route_segments rows for a computed result.
+     */
+    private function insertRouteWithSegments(?string $userId, string $destinationId, array $origin, array $result, ?string $supersedesRouteId, array $excludeHazardIds = []): string
+    {
+        $routeId = (string) Str::uuid();
+        DB::table('routes')->insert([
+            'id' => $routeId,
+            'user_id' => $userId,
+            'destination_id' => $destinationId,
+            'origin' => DB::raw("ST_GeogFromText('POINT({$origin['lng']} {$origin['lat']})')"),
+            'status' => 'Active',
+            'supersedes_route_id' => $supersedesRouteId,
+            'total_cost' => $result['total_cost'],
+            'created_at' => now(),
+            'superseded_at' => null,
+        ]);
+
+        $this->insertRouteSegments($routeId, $result['road_segment_ids'], $excludeHazardIds);
+
+        return $routeId;
+    }
+
+    private function insertRouteSegments(string $routeId, array $segmentIds, array $excludeHazardIds = []): void
+    {
+        $sequence = 0;
+        foreach ($segmentIds as $segId) {
+            $seg = DB::table('road_segments')->where('id', $segId)->first();
+            $q = DB::table('hazards')->where('road_segment_id', $segId);
+            if ($excludeHazardIds !== []) {
+                $q->whereNotIn('id', $excludeHazardIds);
+            }
+            $hazards = $q->get();
+            $hazList = $hazards->map(fn ($h) => ['severity' => $h->severity, 'confidence' => (float) $h->confidence, 'roadImpact' => $h->road_impact, 'status' => $h->status])->all();
+            $service = app(SegmentCostCalculator::class);
+            $segmentCost = $service->calculate((float) $seg->base_travel_cost, $hazList);
+            $hazPenalty = app(HazardPenaltyCalculator::class)->calculateForSegment(array_map(fn ($h) => ['severity' => $h['severity'], 'confidence' => (float) $h['confidence']], $hazList));
+            $uncPenalty = app(UncertaintyPenaltyCalculator::class)->calculateForSegment(array_column($hazList, 'status'));
+
+            DB::table('route_segments')->insert([
+                'id' => (string) Str::uuid(),
+                'route_id' => $routeId,
+                'road_segment_id' => $segId,
+                'sequence_order' => $sequence++,
+                'base_travel_cost' => $seg->base_travel_cost,
+                'hazard_penalty' => $hazPenalty,
+                'uncertainty_penalty' => $uncPenalty,
+                'segment_routing_cost' => $segmentCost,
+            ]);
+        }
     }
 
     public function getRoute(string $routeId): array
@@ -167,7 +197,7 @@ final class RouteService
         return $this->getRoute($route->id);
     }
 
-    private function findNearestNode(array $location): ?string
+    public function findNearestNode(array $location): ?string
     {
         $lng = $location['lng'];
         $lat = $location['lat'];
@@ -176,7 +206,7 @@ final class RouteService
         return $row?->id;
     }
 
-    private function findNearestNodeFromGeom(string $destinationId): ?string
+    public function findNearestNodeFromGeom(string $destinationId): ?string
     {
         $row = DB::selectOne('SELECT nearest_road_node_id as id FROM destinations WHERE id = ?', [$destinationId]);
         if ($row?->id !== null) {
