@@ -21,8 +21,9 @@ class SimulationRepository {
         .toList();
   }
 
-  /// POST /simulation/scenarios/{scenario_id}/run (§8.2) — returns a 202
-  /// handle; results arrive later via [getRun].
+  /// POST /simulation/scenarios/{scenario_id}/run (§8.2) — returns a handle;
+  /// results arrive later via [getRun]. Also captures cost/route ids when the
+  /// backend runs synchronously (current MVP).
   Future<SimulationRunHandle> runScenario({
     required String scenarioId,
     required LatLng origin,
@@ -39,7 +40,7 @@ class SimulationRepository {
   }
 
   /// GET /simulation/runs/{run_id} (§8.3). While `status == Running` the
-  /// route summaries are null; caller keeps polling (GAP-05 interval).
+  /// route summaries are null; caller keeps polling.
   Future<SimulationRun> getRun(String runId) async {
     final res = await _client.get(ApiEndpoints.simulationRun(runId));
     return SimulationRun.fromJson(res.data as Map<String, dynamic>);
