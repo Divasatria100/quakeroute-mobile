@@ -10,7 +10,7 @@ final class DestinationService
 {
     public function list(?array $bbox): array
     {
-        $query = DB::table('destinations');
+        $query = DB::table('destinations')->where('is_synthetic', false);
         if ($bbox !== null) {
             [$minLng, $minLat, $maxLng, $maxLat] = $bbox;
             $query->whereRaw('ST_Intersects(geom, ST_MakeEnvelope(?, ?, ?, ?, 4326)::geography)', [$minLng, $minLat, $maxLng, $maxLat]);

@@ -23,7 +23,12 @@ class _FakeSimRepo implements SimulationRepository {
   Future<List<SimulationScenario>> getScenarios() async => scenarios;
   @override
   Future<SimulationRunHandle> runScenario(
-          {required String scenarioId, required dynamic origin, required String destinationId}) async =>
+          {required String scenarioId,
+          required dynamic origin,
+          required String destinationId,
+          dynamic center,
+          int? seed,
+          int? radiusM}) async =>
       handleRes ??
       SimulationRunHandle(
           runId: 'r1', scenarioId: scenarioId, status: 'Completed', startedAt: DateTime.now());

@@ -22,6 +22,7 @@ class SimulationScreen extends ConsumerStatefulWidget {
 
 class _SimulationScreenState extends ConsumerState<SimulationScreen> {
   final MapController _mapController = MapController();
+  final MapController _selectionMapController = MapController();
   bool _mapReady = false;
 
   @override
@@ -68,12 +69,6 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
   ll.LatLng? _hazardLatLng(SimulationHazardSummary h) {
     if (h.location != null) {
       return ll.LatLng(h.location!.lat, h.location!.lng);
-    }
-    // No location in summary — derive from known seeded B->C centroid for demo.
-    // This is presentation-only fallback; backend is source of truth.
-    // B (106.81,-6.20) -> C (106.82,-6.20) centroid ~ (106.815, -6.20)
-    if (h.roadSegmentId == 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2') {
-      return const ll.LatLng(-6.20, 106.815);
     }
     return null;
   }
@@ -164,6 +159,35 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
       return ListView(
         padding: const EdgeInsets.all(QRTokens.spaceLg),
         children: [
+          _CrosshairSelectionMap(state: s, mapController: _selectionMapController),
+          const SizedBox(height: QRTokens.spaceMd),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () => ref.read(simulationControllerProvider.notifier).confirmLocation(),
+                  icon: const Icon(Icons.my_location, size: 16),
+                  label: Text(s.locationConfirmed ? 'Location Confirmed' : 'Use This Location'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: s.locationConfirmed ? QRTokens.semanticSafe : QRTokens.accentCyan,
+                    foregroundColor: QRTokens.textOnAccent,
+                  ),
+                ),
+              ),
+              const SizedBox(width: QRTokens.spaceSm),
+              OutlinedButton.icon(
+                onPressed: () => ref.read(simulationControllerProvider.notifier).refreshSimulation(),
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Refresh'),
+              ),
+            ],
+          ),
+          if (s.locationConfirmed) ...[
+            const SizedBox(height: 4),
+            Text('Seed: ${s.seed} • Radius: ${s.radiusM} m',
+                style: const TextStyle(fontSize: 10, color: QRTokens.textDisabled)),
+          ],
+          const SizedBox(height: QRTokens.spaceLg),
           _DestinationPicker(state: s),
           const SizedBox(height: QRTokens.spaceLg),
           const Text('Scenarios',
@@ -269,7 +293,7 @@ class _DestinationPicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final destState = state.destinations;
-    const origin = SimulationState.simulationOrigin;
+    final origin = state.simulationCenter;
 
     Widget content;
     if (destState is UiLoading || destState is UiInitial) {
@@ -352,6 +376,70 @@ class _DestinationPicker extends ConsumerWidget {
         border: Border.all(color: QRTokens.borderDefault),
       ),
       child: content,
+    );
+  }
+}
+
+class _CrosshairSelectionMap extends ConsumerWidget {
+  const _CrosshairSelectionMap({required this.state, required this.mapController});
+  final SimulationState state;
+  final MapController mapController;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final center = state.simulationCenter;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Row(
+          children: [
+            Icon(Icons.my_location, size: 16, color: QRTokens.accentCyan),
+            SizedBox(width: 6),
+            Text('Simulation Center (drag map under crosshair)',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: QRTokens.textSecondary)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(QRTokens.radiusMd),
+          child: SizedBox(
+            height: 220,
+            child: Stack(
+              children: [
+                QRMapCanvas(
+                  center: ll.LatLng(center.lat, center.lng),
+                  mapController: mapController,
+                  onPositionChanged: (camera, hasGesture) {
+                    // Map moves, crosshair stays — update center.
+                    if (!hasGesture) return;
+                    final c = camera.center;
+                    ref.read(simulationControllerProvider.notifier).selectCenter(LatLng(c.latitude, c.longitude));
+                  },
+                ),
+                // Fixed crosshair.
+                const Center(
+                  child: IgnorePointer(
+                    child: Icon(Icons.add, size: 32, color: QRTokens.semanticDanger, shadows: [Shadow(color: Colors.black45, blurRadius: 4)]),
+                  ),
+                ),
+                Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(4), border: Border.all(color: QRTokens.borderDefault)),
+                    child: Text('✚ ${center.lat.toStringAsFixed(4)}, ${center.lng.toStringAsFixed(4)}',
+                        style: const TextStyle(fontSize: 10, color: QRTokens.textSecondary, fontFamily: 'monospace')),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text('Drag map — crosshair stays fixed. Tap Use This Location to lock center.',
+            style: TextStyle(fontSize: 10, color: QRTokens.textDisabled)),
+      ],
     );
   }
 }
@@ -505,9 +593,6 @@ class _SimulationResultSection extends StatelessWidget {
   ll.LatLng? _hazardPoint(SimulationHazardSummary h) {
     if (h.location != null) {
       return ll.LatLng(h.location!.lat, h.location!.lng);
-    }
-    if (h.roadSegmentId == 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2') {
-      return const ll.LatLng(-6.20, 106.815);
     }
     return null;
   }

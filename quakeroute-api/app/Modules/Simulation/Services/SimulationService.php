@@ -7,6 +7,7 @@ namespace App\Modules\Simulation\Services;
 use App\Modules\Route\Services\RouteService;
 use App\Modules\Routing\Services\RiskAwareRoutingService;
 use App\Modules\Routing\Support\GraphBuilder;
+use App\Modules\Simulation\Support\SyntheticNetworkGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -18,6 +19,7 @@ final class SimulationService
         private readonly RouteService $routeService,
         private readonly GraphBuilder $graphBuilder,
         private readonly RiskAwareRoutingService $routingService,
+        private readonly SyntheticNetworkGenerator $syntheticGenerator,
     ) {}
 
     public function listScenarios(): array
@@ -28,12 +30,18 @@ final class SimulationService
         ])->all();
     }
 
-    public function runScenario(string $scenarioId, array $origin, string $destinationId): array
+    public function runScenario(string $scenarioId, array $origin, string $destinationId, ?array $center = null, ?int $seed = null, ?int $radiusM = null): array
     {
         $scenario = DB::table('simulation_scenarios')->where('scenario_key', $scenarioId)->first();
         if ($scenario === null) {
             abort(404, 'Scenario not found');
         }
+
+        // Synthetic mode when center is provided (crosshair).
+        if ($center !== null && isset($center['lat'], $center['lng'])) {
+            return $this->runSyntheticScenario($scenarioId, $scenario, $center, $destinationId, $seed ?? random_int(1, 999999), $radiusM ?? 1500, $origin);
+        }
+
         $dest = DB::table('destinations')->where('id', $destinationId)->first();
         if ($dest === null) {
             abort(422, 'Destination not found');
@@ -110,6 +118,239 @@ final class SimulationService
             'risk_aware_cost' => $riskAware['success'] ? (float) $riskAware['total_cost'] : null,
             'hazards_created' => $hazardRecords,
         ];
+    }
+
+    /**
+     * Synthetic mode: generate network around center deterministically.
+     */
+    private function runSyntheticScenario(string $scenarioId, object $scenario, array $center, string $destinationId, int $seed, int $radiusM, array $origin): array
+    {
+        $centerLat = (float) $center['lat'];
+        $centerLng = (float) $center['lng'];
+
+        // Generate synthetic network around center.
+        $generated = $this->syntheticGenerator->generate($centerLat, $centerLng, $seed, $radiusM);
+        $nodes = $generated['nodes'];
+        $segments = $generated['segments'];
+        $syntheticDests = $generated['destinations'];
+
+        $runId = (string) Str::uuid();
+
+        // Insert synthetic nodes/segments with is_synthetic flag for geometry persistence (idempotent for same seed+center).
+        foreach ($nodes as $n) {
+            DB::table('road_nodes')->updateOrInsert(['id' => $n['id']], [
+                'label' => $n['label'],
+                'geom' => DB::raw("ST_GeogFromText('POINT({$n['lng']} {$n['lat']})')"),
+                'is_synthetic' => true,
+                'simulation_run_id' => $runId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        foreach ($segments as $s) {
+            DB::table('road_segments')->updateOrInsert(['id' => $s['id']], [
+                'from_node_id' => $s['from'],
+                'to_node_id' => $s['to'],
+                'geom' => DB::raw("ST_GeogFromText('{$s['wkt']}')"),
+                'base_travel_cost' => $s['base_cost'],
+                'bidirectional' => $s['bidirectional'],
+                'is_synthetic' => true,
+                'simulation_run_id' => $runId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        foreach ($syntheticDests as $d) {
+            DB::table('destinations')->updateOrInsert(['id' => $d['id']], [
+                'name' => $d['name'],
+                'type' => $d['type'],
+                'geom' => DB::raw("ST_GeogFromText('POINT({$d['lng']} {$d['lat']})')"),
+                'nearest_road_node_id' => $nodes[5]['id'] ?? $nodes[0]['id'],
+                'is_synthetic' => true,
+                'simulation_run_id' => $runId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        // Use first synthetic destination for routing (within simulation area).
+        $destIdForRun = $syntheticDests[0]['id'];
+        $originNode = $this->findNearestSyntheticNode($centerLat, $centerLng, $nodes);
+        $destNode = $this->findNearestSyntheticNode($syntheticDests[0]['lat'], $syntheticDests[0]['lng'], $nodes);
+
+        DB::table('simulation_runs')->insert([
+            'id' => $runId,
+            'scenario_key' => $scenarioId,
+            'origin' => DB::raw("ST_GeogFromText('POINT({$centerLng} {$centerLat})')"),
+            'destination_id' => $destIdForRun,
+            'status' => 'Running',
+            'baseline_route_id' => null,
+            'risk_aware_route_id' => null,
+            'started_at' => now(),
+            'completed_at' => null,
+        ]);
+
+        // Generate scenario-specific hazards on synthetic segments.
+        [$hazardRecords, $hazardIds] = $this->createSyntheticHazards($runId, $scenarioId, $segments, $seed);
+
+        // Build graphs in-memory from synthetic network.
+        $nodeIds = array_column($nodes, 'id');
+        $baselineSegments = $this->segmentsWithHazardsForGraph($segments, [], $hazardIds);
+        $riskSegments = $this->segmentsWithHazardsForGraph($segments, $this->hazardsForGraph($hazardIds), []);
+
+        $baselineGraph = $this->graphBuilder->build($nodeIds, $baselineSegments);
+        $riskGraph = $this->graphBuilder->build($nodeIds, $riskSegments);
+
+        $baseline = $this->routingService->findRouteOnGraph($originNode, $destNode, $baselineGraph);
+        $riskAware = $this->routingService->findRouteOnGraph($originNode, $destNode, $riskGraph);
+
+        $baselineRouteId = null;
+        $riskAwareRouteId = null;
+        if ($baseline['success']) {
+            $baselineRouteId = $this->routeService->persistSimulationRoute($destIdForRun, ['lat' => $centerLat, 'lng' => $centerLng], $baseline, $hazardIds);
+        }
+        if ($riskAware['success']) {
+            $riskAwareRouteId = $this->routeService->persistSimulationRoute($destIdForRun, ['lat' => $centerLat, 'lng' => $centerLng], $riskAware);
+        }
+
+        foreach ($hazardIds as $hid) {
+            DB::table('simulation_run_hazards')->insertOrIgnore([
+                'id' => (string) Str::uuid(),
+                'simulation_run_id' => $runId,
+                'hazard_id' => $hid,
+            ]);
+        }
+
+        DB::table('simulation_runs')->where('id', $runId)->update([
+            'status' => 'Completed',
+            'baseline_route_id' => $baselineRouteId,
+            'risk_aware_route_id' => $riskAwareRouteId,
+            'completed_at' => now(),
+        ]);
+
+        return [
+            'run_id' => $runId,
+            'scenario_id' => $scenarioId,
+            'status' => 'Completed',
+            'started_at' => now()->toIso8601String(),
+            'baseline_route_id' => $baselineRouteId,
+            'risk_aware_route_id' => $riskAwareRouteId,
+            'baseline_cost' => $baseline['success'] ? (float) $baseline['total_cost'] : null,
+            'risk_aware_cost' => $riskAware['success'] ? (float) $riskAware['total_cost'] : null,
+            'hazards_created' => $hazardRecords,
+            'center' => $center,
+            'seed' => $seed,
+            'synthetic_destinations' => $syntheticDests,
+        ];
+    }
+
+    private function findNearestSyntheticNode(float $lat, float $lng, array $nodes): string
+    {
+        $best = $nodes[0]['id'];
+        $bestDist = PHP_INT_MAX;
+        foreach ($nodes as $n) {
+            $dLat = $n['lat'] - $lat;
+            $dLng = $n['lng'] - $lng;
+            $dist = $dLat * $dLat + $dLng * $dLng;
+            if ($dist < $bestDist) {
+                $bestDist = $dist;
+                $best = $n['id'];
+            }
+        }
+        return $best;
+    }
+
+    private function createSyntheticHazards(string $runId, string $scenarioId, array $segments, int $seed): array
+    {
+        $rand = new \Random\Randomizer(new \Random\Engine\Mt19937($seed + crc32($scenarioId)));
+        $records = [];
+        $ids = [];
+
+        $pickSegment = function () use ($segments, $rand): array {
+            $idx = $rand->getInt(0, count($segments) - 1);
+            return $segments[$idx];
+        };
+
+        $makeHazard = function (array $seg, string $type, string $severity, string $roadImpact, float $conf, string $status) use ($runId, &$records, &$ids) {
+            $hid = (string) Str::uuid();
+            $coords = DB::selectOne('SELECT ST_X(ST_Centroid(geom::geometry)) as lng, ST_Y(ST_Centroid(geom::geometry)) as lat FROM road_segments WHERE id = ?', [$seg['id']]);
+            $lat = $coords ? (float) $coords->lat : 0;
+            $lng = $coords ? (float) $coords->lng : 0;
+            // For synthetic, coordinates are already known; use segment centroid from wkt.
+            if (!$coords) {
+                $lat = 0; $lng = 0;
+            }
+            // Derive lat/lng from segment wkt centroid approximation: use provided segment's midpoint via synthetic data.
+            // Instead use the synthetic node coords midpoint.
+            DB::table('hazards')->insert([
+                'id' => $hid,
+                'type' => $type,
+                'severity' => $severity,
+                'confidence' => $conf,
+                'road_impact' => $roadImpact,
+                'status' => $status,
+                'source' => 'AITextExtraction',
+                'road_segment_id' => $seg['id'],
+                'location' => DB::raw("ST_GeogFromText('POINT({$lng} {$lat})')"),
+                'reported_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $ids[] = $hid;
+            $records[] = ['hazard_id' => $hid, 'type' => $type, 'severity' => $severity, 'confidence' => $conf, 'road_impact' => $roadImpact, 'road_segment_id' => $seg['id'], 'status' => $status];
+        };
+
+        if ($scenarioId === 'no_hazard') {
+            return [[], []];
+        } elseif ($scenarioId === 'blocked_road' || $scenarioId === 'new_hazard_during_navigation') {
+            $seg = $pickSegment();
+            $makeHazard($seg, 'RoadBlockage', 'High', 'Blocked', 0.95, 'Confirmed');
+        } elseif ($scenarioId === 'high_risk_hazard') {
+            $seg = $pickSegment();
+            $makeHazard($seg, 'Fire', 'High', 'PartiallyBlocked', 0.9, 'Confirmed');
+        } elseif ($scenarioId === 'conflicting_reports') {
+            $seg = $pickSegment();
+            $makeHazard($seg, 'Flood', 'High', 'Blocked', 0.8, 'Confirmed');
+            $makeHazard($seg, 'Flood', 'Low', 'Passable', 0.6, 'UncertainConflicting');
+        } elseif ($scenarioId === 'ai_vision_hazard_report') {
+            $seg = $pickSegment();
+            $makeHazard($seg, 'VisibleBuildingDamage', 'Medium', 'PartiallyBlocked', 0.75, 'Reported');
+        } else {
+            $seg = $pickSegment();
+            $makeHazard($seg, 'DebrisRubble', 'Medium', 'PartiallyBlocked', 0.7, 'Reported');
+        }
+
+        return [$records, $ids];
+    }
+
+    private function segmentsWithHazardsForGraph(array $segments, array $hazardsBySegment, array $excludeIds): array
+    {
+        $result = [];
+        foreach ($segments as $seg) {
+            $result[] = [
+                'id' => $seg['id'],
+                'from_node_id' => $seg['from'],
+                'to_node_id' => $seg['to'],
+                'base_travel_cost' => $seg['base_cost'],
+                'bidirectional' => $seg['bidirectional'],
+                'hazards' => $hazardsBySegment[$seg['id']] ?? [],
+            ];
+        }
+        return $result;
+    }
+
+    private function hazardsForGraph(array $hazardIds): array
+    {
+        if ($hazardIds === []) return [];
+        $rows = DB::table('hazards')->whereIn('id', $hazardIds)->get();
+        $grouped = [];
+        foreach ($rows as $r) {
+            $grouped[$r->road_segment_id][] = [
+                'severity' => $r->severity,
+                'confidence' => (float) $r->confidence,
+                'roadImpact' => $r->road_impact,
+                'status' => $r->status,
+            ];
+        }
+        return $grouped;
     }
 
     /**
@@ -196,13 +437,17 @@ final class SimulationService
         $hazards = DB::table('simulation_run_hazards')
             ->where('simulation_run_id', $runId)
             ->join('hazards', 'hazards.id', '=', 'simulation_run_hazards.hazard_id')
+            ->selectRaw('hazards.*, ST_X(hazards.location::geometry) as lng, ST_Y(hazards.location::geometry) as lat')
             ->get()
             ->map(fn ($r) => [
                 'hazard_id' => $r->hazard_id,
                 'type' => $r->type,
                 'road_impact' => $r->road_impact,
                 'severity' => $r->severity,
+                'confidence' => (float) $r->confidence,
+                'status' => $r->status,
                 'road_segment_id' => $r->road_segment_id,
+                'location' => ['lat' => (float) $r->lat, 'lng' => (float) $r->lng],
             ])->all();
 
         $originLoc = DB::selectOne('SELECT ST_X(origin::geometry) as lng, ST_Y(origin::geometry) as lat FROM simulation_runs WHERE id = ?', [$runId]);

@@ -21,6 +21,10 @@ class SimulationState {
     this.riskAwareRouteDetail,
     this.destinations = const UiInitial(),
     this.selectedDestinationId,
+    this.simulationCenter = const LatLng(-6.2, 106.8),
+    this.seed = 42,
+    this.radiusM = 1500,
+    this.locationConfirmed = false,
   });
 
   final UiState<List<SimulationScenario>> scenarios;
@@ -35,13 +39,19 @@ class SimulationState {
   final QuakeRoute? baselineRouteDetail;
   final QuakeRoute? riskAwareRouteDetail;
 
-  /// Destinations for simulation — distance computed from simulationOrigin,
+  /// Destinations for simulation — distance computed from simulationCenter,
   /// never device GPS (demo deterministic).
   final UiState<List<Destination>> destinations;
   final String? selectedDestinationId;
 
-  /// Deterministic simulation origin (near node A, Jakarta) — not device GPS.
-  static const simulationOrigin = LatLng(-6.2, 106.8);
+  /// Crosshair-based simulation center — source of truth for synthetic generation.
+  final LatLng simulationCenter;
+  final int seed;
+  final int radiusM;
+  final bool locationConfirmed;
+
+  /// Default center (initial viewport) — not a fixed simulation location.
+  static const defaultSimulationCenter = LatLng(-6.2, 106.8);
 
   SimulationState copyWith({
     UiState<List<SimulationScenario>>? scenarios,
@@ -58,6 +68,10 @@ class SimulationState {
     bool clearRiskAwareDetail = false,
     UiState<List<Destination>>? destinations,
     String? Function()? selectedDestinationId,
+    LatLng? simulationCenter,
+    int? seed,
+    int? radiusM,
+    bool? locationConfirmed,
   }) =>
       SimulationState(
         scenarios: scenarios ?? this.scenarios,
@@ -78,6 +92,10 @@ class SimulationState {
         selectedDestinationId: selectedDestinationId == null
             ? this.selectedDestinationId
             : selectedDestinationId(),
+        simulationCenter: simulationCenter ?? this.simulationCenter,
+        seed: seed ?? this.seed,
+        radiusM: radiusM ?? this.radiusM,
+        locationConfirmed: locationConfirmed ?? this.locationConfirmed,
       );
 }
 
@@ -122,6 +140,28 @@ class SimulationController extends StateNotifier<SimulationState> {
     state = state.copyWith(selectedDestinationId: () => destinationId);
   }
 
+  void selectCenter(LatLng center) {
+    // Update center without confirming — map drag.
+    state = state.copyWith(simulationCenter: center);
+  }
+
+  void confirmLocation() {
+    state = state.copyWith(locationConfirmed: true);
+  }
+
+  void refreshSimulation() {
+    // Keep center, bump seed, clear previous run.
+    final newSeed = state.seed + 1;
+    state = state.copyWith(
+      seed: newSeed,
+      clearRun: true,
+      clearRunHandle: true,
+      clearBaselineDetail: true,
+      clearRiskAwareDetail: true,
+      error: () => null,
+    );
+  }
+
   Future<void> runScenario(String scenarioId) async {
     // Isolation: clear previous run/markers/routes before starting new scenario.
     _poll?.cancel();
@@ -135,8 +175,9 @@ class SimulationController extends StateNotifier<SimulationState> {
       selectedScenarioId: () => scenarioId,
     );
     try {
-      // Deterministic simulation origin — never device GPS.
-      const origin = SimulationState.simulationOrigin;
+      // Crosshair-based simulation origin — never device GPS.
+      final center = state.simulationCenter;
+      final origin = center;
       final destId = state.selectedDestinationId;
       if (destId == null) {
         // Lazy-load destinations if not yet loaded.
@@ -155,10 +196,14 @@ class SimulationController extends StateNotifier<SimulationState> {
       }
       final effectiveDestId = state.selectedDestinationId;
       if (effectiveDestId == null) throw Exception('No destination selected');
-      final handle = await _ref
-          .read(simulationRepositoryProvider)
-          .runScenario(
-              scenarioId: scenarioId, origin: origin, destinationId: effectiveDestId);
+      final handle = await _ref.read(simulationRepositoryProvider).runScenario(
+            scenarioId: scenarioId,
+            origin: origin,
+            destinationId: effectiveDestId,
+            center: center,
+            seed: state.seed,
+            radiusM: state.radiusM,
+          );
       if (!mounted) return;
 
       // Backend currently runs synchronously and returns 202 with Completed

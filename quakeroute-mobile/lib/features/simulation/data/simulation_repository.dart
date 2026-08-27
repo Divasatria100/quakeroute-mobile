@@ -24,17 +24,28 @@ class SimulationRepository {
   /// POST /simulation/scenarios/{scenario_id}/run (§8.2) — returns a handle;
   /// results arrive later via [getRun]. Also captures cost/route ids when the
   /// backend runs synchronously (current MVP).
+  /// When [center] is provided, the backend generates a synthetic network
+  /// around that crosshair location (deterministic via [seed]).
   Future<SimulationRunHandle> runScenario({
     required String scenarioId,
     required LatLng origin,
     required String destinationId,
+    LatLng? center,
+    int? seed,
+    int? radiusM,
   }) async {
+    final data = <String, dynamic>{
+      'origin': {'lat': origin.lat, 'lng': origin.lng},
+      'destination_id': destinationId,
+    };
+    if (center != null) {
+      data['center'] = {'lat': center.lat, 'lng': center.lng};
+    }
+    if (seed != null) data['seed'] = seed;
+    if (radiusM != null) data['radius_m'] = radiusM;
     final res = await _client.post(
       ApiEndpoints.simulationRunScenario(scenarioId),
-      data: {
-        'origin': {'lat': origin.lat, 'lng': origin.lng},
-        'destination_id': destinationId,
-      },
+      data: data,
     );
     return SimulationRunHandle.fromJson(res.data as Map<String, dynamic>);
   }

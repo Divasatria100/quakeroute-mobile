@@ -25,6 +25,9 @@ final class HazardQueryService
             $query->where('i.updated_at', '>=', $filters['updated_since']);
         }
 
+        // Exclude synthetic simulation hazards from global map.
+        $query->whereRaw('(i.road_segment_id IS NULL OR i.road_segment_id NOT IN (SELECT id FROM road_segments WHERE is_synthetic = true))');
+
         $rows = $query->selectRaw('i.*, ST_X(i.location::geometry) AS lng, ST_Y(i.location::geometry) AS lat')
             ->orderBy('i.reported_at', 'desc')->limit(100)->get();
 

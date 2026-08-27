@@ -16,7 +16,7 @@ final class RoadSegmentService
     public function list(?array $bbox = null): array
     {
         // Single query for segments + geometry
-        $query = DB::table('road_segments')
+        $query = DB::table('road_segments')->where('is_synthetic', false)
             ->selectRaw('id, base_travel_cost, ST_AsGeoJSON(geom::geometry) as geojson');
 
         // Optional bbox filter using ST_Intersects if provided [minLng,minLat,maxLng,maxLat]

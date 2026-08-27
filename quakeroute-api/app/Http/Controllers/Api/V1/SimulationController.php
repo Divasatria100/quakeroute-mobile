@@ -24,7 +24,14 @@ class SimulationController extends Controller
 
     public function run(SimulationRunRequest $request, string $scenario_id): JsonResponse
     {
-        $result = $this->service->runScenario($scenario_id, $request->input('origin'), $request->input('destination_id'));
+        $result = $this->service->runScenario(
+            $scenario_id,
+            $request->input('origin'),
+            $request->input('destination_id'),
+            $request->input('center'),
+            $request->input('seed') !== null ? (int) $request->input('seed') : null,
+            $request->input('radius_m') !== null ? (int) $request->input('radius_m') : null,
+        );
 
         return response()->json($result, 202);
     }

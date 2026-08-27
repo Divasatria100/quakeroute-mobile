@@ -20,6 +20,11 @@ class SimulationRunRequest extends FormRequest
             'origin.lat' => ['required', 'numeric', 'between:-90,90'],
             'origin.lng' => ['required', 'numeric', 'between:-180,180'],
             'destination_id' => ['required', 'uuid', 'exists:destinations,id'],
+            'center' => ['nullable', 'array'],
+            'center.lat' => ['required_with:center', 'numeric', 'between:-90,90'],
+            'center.lng' => ['required_with:center', 'numeric', 'between:-180,180'],
+            'seed' => ['nullable', 'integer', 'between:0,2147483647'],
+            'radius_m' => ['nullable', 'integer', 'between:500,5000'],
         ];
     }
 }

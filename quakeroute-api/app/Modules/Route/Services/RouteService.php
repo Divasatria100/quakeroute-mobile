@@ -100,6 +100,13 @@ final class RouteService
         return $this->insertRouteWithSegments($userId, $destinationId, $origin, $result, $supersedesRouteId);
     }
 
+    public function persistSyntheticRoute(string $destinationId, array $origin, array $result, array $syntheticNodes): string
+    {
+        return DB::transaction(function () use ($destinationId, $origin, $result) {
+            return $this->insertRouteWithSegments(null, $destinationId, $origin, $result, null);
+        });
+    }
+
     /**
      * Insert the routes row and its route_segments rows for a computed result.
      */
@@ -128,6 +135,7 @@ final class RouteService
         $sequence = 0;
         foreach ($segmentIds as $segId) {
             $seg = DB::table('road_segments')->where('id', $segId)->first();
+            if ($seg === null) continue;
             $q = DB::table('hazards')->where('road_segment_id', $segId);
             if ($excludeHazardIds !== []) {
                 $q->whereNotIn('id', $excludeHazardIds);
@@ -136,8 +144,16 @@ final class RouteService
             $hazList = $hazards->map(fn ($h) => ['severity' => $h->severity, 'confidence' => (float) $h->confidence, 'roadImpact' => $h->road_impact, 'status' => $h->status])->all();
             $service = app(SegmentCostCalculator::class);
             $segmentCost = $service->calculate((float) $seg->base_travel_cost, $hazList);
+            // Clamp blocked INF to max decimal to avoid numeric overflow; blocked segments should not be in a successful route.
+            if ($segmentCost >= 1e10) {
+                $segmentCost = 99999999.99;
+            }
             $hazPenalty = app(HazardPenaltyCalculator::class)->calculateForSegment(array_map(fn ($h) => ['severity' => $h['severity'], 'confidence' => (float) $h['confidence']], $hazList));
             $uncPenalty = app(UncertaintyPenaltyCalculator::class)->calculateForSegment(array_column($hazList, 'status'));
+            if ($hazPenalty >= 1e10) $hazPenalty = 99999999.99;
+            if ($uncPenalty >= 1e10) $uncPenalty = 99999999.99;
+            if ($segmentCost >= 1e10) $segmentCost = (float) $seg->base_travel_cost + $hazPenalty + $uncPenalty;
+            if ($segmentCost >= 1e10) $segmentCost = 99999999.99;
 
             DB::table('route_segments')->insert([
                 'id' => (string) Str::uuid(),
@@ -201,7 +217,7 @@ final class RouteService
     {
         $lng = $location['lng'];
         $lat = $location['lat'];
-        $row = DB::selectOne("SELECT id FROM road_nodes ORDER BY geom <-> ST_GeogFromText('POINT($lng $lat)') LIMIT 1");
+        $row = DB::selectOne("SELECT id FROM road_nodes WHERE is_synthetic = false ORDER BY geom <-> ST_GeogFromText('POINT($lng $lat)') LIMIT 1");
 
         return $row?->id;
     }

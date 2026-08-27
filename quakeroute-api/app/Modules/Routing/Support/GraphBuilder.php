@@ -21,8 +21,8 @@ final class GraphBuilder
      */
     public function buildFromDatabase(array $excludeHazardIds = []): array
     {
-        $nodes = DB::table('road_nodes')->pluck('id')->all();
-        $segments = DB::table('road_segments')->get();
+        $nodes = DB::table('road_nodes')->where('is_synthetic', false)->pluck('id')->all();
+        $segments = DB::table('road_segments')->where('is_synthetic', false)->get();
         $hazards = DB::table('hazards')
             ->select('id', 'road_segment_id', 'severity', 'confidence', 'road_impact', 'status')
             ->whereNotNull('road_segment_id')
