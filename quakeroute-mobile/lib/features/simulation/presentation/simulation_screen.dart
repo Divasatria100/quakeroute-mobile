@@ -39,19 +39,30 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
     final coords = <ll.LatLng>[];
     final baseGeom = s.baselineRouteDetail?.geometry?.coordinates;
     final riskGeom = s.riskAwareRouteDetail?.geometry?.coordinates;
-    // Fallback to summary segments if detail not yet fetched (should not happen after enrichment).
+
     if (baseGeom != null) {
       coords.addAll(baseGeom.map((c) => ll.LatLng(c.lat, c.lng)));
     }
     if (riskGeom != null) {
       coords.addAll(riskGeom.map((c) => ll.LatLng(c.lat, c.lng)));
     }
+
+    // Include synthetic network nodes if available
+    if (s.run?.network != null) {
+      for (final n in s.run!.network!.nodes) {
+        coords.add(ll.LatLng(n.location.lat, n.location.lng));
+      }
+    }
+
+    // Include synthetic destinations
+    if (s.run?.syntheticDestinations != null) {
+      for (final d in s.run!.syntheticDestinations) {
+        coords.add(ll.LatLng(d.location.lat, d.location.lng));
+      }
+    }
+
     // Include hazard locations from active run only — never global pool.
     final hazards = s.run?.hazardsCreated ?? const <SimulationHazardSummary>[];
-    // Hazards in simulation run don't carry location in current backend summary;
-    // they are still placed deterministically on B->C segment centroid.
-    // We add a synthetic hazard point near the blocked segment centroid when
-    // hazard has roadSegmentId but no location (see _hazardLatLng).
     for (final h in hazards) {
       final p = _hazardLatLng(h);
       if (p != null) coords.add(p);
@@ -428,7 +439,7 @@ class _CrosshairSelectionMap extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.9), borderRadius: BorderRadius.circular(4), border: Border.all(color: QRTokens.borderDefault)),
-                    child: Text('✚ ${center.lat.toStringAsFixed(4)}, ${center.lng.toStringAsFixed(4)}',
+                    child: Text('✚ Lat: ${center.lat.toStringAsFixed(6)}, Lng: ${center.lng.toStringAsFixed(6)}',
                         style: const TextStyle(fontSize: 10, color: QRTokens.textSecondary, fontFamily: 'monospace')),
                   ),
                 ),
@@ -460,8 +471,23 @@ class _SimulationResultSection extends StatelessWidget {
     final riskSummary = run.riskAwareRoute;
     final hazards = run.hazardsCreated;
 
-    // Polyline construction — baseline thinner/dashed feel, risk-aware prominent.
+    // Polyline construction — background synthetic network, baseline, risk-aware.
     final polylines = <Polyline<Object>>[];
+
+    // Render background synthetic network grid
+    if (run.network != null) {
+      for (final seg in run.network!.segments) {
+        if (seg.coordinates.length >= 2) {
+          polylines.add(
+            Polyline(
+              points: seg.coordinates.map((c) => ll.LatLng(c.lat, c.lng)).toList(),
+              color: QRTokens.borderDefault.withValues(alpha: 0.8),
+              strokeWidth: 2.5,
+            ),
+          );
+        }
+      }
+    }
 
     // Baseline: neutral / thinner — visible even when overlapping.
     final baseCoords = baselineDetail?.geometry?.coordinates ??
@@ -493,8 +519,52 @@ class _SimulationResultSection extends StatelessWidget {
       );
     }
 
-    // Markers — exclusively from activeSimulationRun.hazards, never global pool.
+    // Markers — exclusively from activeSimulationRun.hazards, plus synthetic origin/destinations
     final markers = <Marker>[];
+
+    // Simulation Center Origin Marker
+    if (run.origin != null) {
+      markers.add(
+        Marker(
+          point: ll.LatLng(run.origin!.lat, run.origin!.lng),
+          width: 32,
+          height: 32,
+          child: Container(
+            decoration: const BoxDecoration(
+              color: QRTokens.accentCyan,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+            ),
+            child: const Icon(Icons.my_location, size: 18, color: Colors.white),
+          ),
+        ),
+      );
+    }
+
+    // Synthetic Destinations Markers
+    for (final d in run.syntheticDestinations) {
+      markers.add(
+        Marker(
+          point: ll.LatLng(d.location.lat, d.location.lng),
+          width: 32,
+          height: 32,
+          child: Container(
+            decoration: BoxDecoration(
+              color: d.type == 'MedicalFacility' ? QRTokens.semanticDanger : QRTokens.semanticSafe,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child: Icon(
+              d.type == 'MedicalFacility' ? Icons.local_hospital : Icons.home_work,
+              size: 16,
+              color: Colors.white,
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Hazard markers
     for (final h in hazards) {
       final pos = _hazardPoint(h);
       if (pos == null) continue;
@@ -894,17 +964,7 @@ class _SimulationSummary extends StatelessWidget {
       );
 
   String _shortSeg(String id) {
-    // Deterministic seeded network: ...aaa1 = A->B, aaa2 = B->C, aaa7 = C->F etc.
-    const map = {
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1': 'A→B',
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2': 'B→C',
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa3': 'D→E',
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa4': 'E→F',
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa5': 'A→D',
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa6': 'B→E',
-      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa7': 'C→F',
-    };
-    return map[id] ?? (id.length > 8 ? '${id.substring(0, 8)}…' : id);
+    return id.length > 8 ? '${id.substring(0, 8)}…' : id;
   }
 
   Color _hazardColor(SimulationHazardSummary h) {

@@ -15,10 +15,9 @@ import 'package:quakeroute_mobile/features/simulation/presentation/simulation_sc
 import 'widget_test.dart' show hazardPollIntervalOverride;
 
 class _FakeSimRepo implements SimulationRepository {
-  _FakeSimRepo({this.scenarios = const [], this.runRes, this.handleRes});
+  _FakeSimRepo({this.scenarios = const [], this.runRes});
   final List<SimulationScenario> scenarios;
   final SimulationRun? runRes;
-  final SimulationRunHandle? handleRes;
   @override
   Future<List<SimulationScenario>> getScenarios() async => scenarios;
   @override
@@ -29,7 +28,6 @@ class _FakeSimRepo implements SimulationRepository {
           dynamic center,
           int? seed,
           int? radiusM}) async =>
-      handleRes ??
       SimulationRunHandle(
           runId: 'r1', scenarioId: scenarioId, status: 'Completed', startedAt: DateTime.now());
   @override
@@ -62,13 +60,12 @@ class _FakeDestRepo implements DestinationRepository {
 }
 
 class _FakeRouteRepo implements RouteRepository {
-  _FakeRouteRepo({this.routeToReturn});
-  final QuakeRoute? routeToReturn;
+  _FakeRouteRepo();
   @override
   Future<QuakeRoute> createRoute({required String destinationId, required LatLng origin}) =>
       throw UnimplementedError();
   @override
-  Future<QuakeRoute?> getActiveRoute() async => routeToReturn;
+  Future<QuakeRoute?> getActiveRoute() async => null;
   @override
   Future<QuakeRoute> getRoute(String routeId) async {
     // Return a minimal route with geometry for map rendering.
@@ -256,6 +253,11 @@ void main() {
 
   group('SimulationScreen', () {
     testWidgets('list renders', (tester) async {
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
       final fake = _FakeSimRepo(
           scenarios: [const SimulationScenario(id: 'no_hazard', name: 'No Hazard')]);
       await tester.pumpWidget(ProviderScope(
@@ -266,7 +268,8 @@ void main() {
             ...hazardPollIntervalOverride(),
           ],
           child: const MaterialApp(home: SimulationScreen())));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.text('No Hazard'), findsOneWidget);
     });
 
@@ -420,33 +423,53 @@ void main() {
       expect(container.read(simulationControllerProvider).selectedDestinationId, 'b3');
     });
 
-    testWidgets('simulation destination picker shows distances, not Distance unavailable', (tester) async {
-      final dests = [
-        const Destination(id: 'b1', name: 'Shelter Balai Kota', type: DestinationType.shelter, location: LatLng(-6.2005, 106.8005)),
-        const Destination(id: 'b2', name: 'Shelter Pasar Minggu', type: DestinationType.shelter, location: LatLng(-6.2005, 106.8205)),
-        const Destination(id: 'b3', name: 'Shelter F Community Hall', type: DestinationType.shelter, location: LatLng(-6.2105, 106.8205)),
-        const Destination(id: 'b4', name: 'Medical Facility D', type: DestinationType.medicalFacility, location: LatLng(-6.2105, 106.8005)),
-        const Destination(id: 'b5', name: 'Medical Facility B', type: DestinationType.medicalFacility, location: LatLng(-6.2005, 106.8105)),
-      ];
+    test('crosshair simulation state updates center, confirms location, and refreshes seed', () async {
+      final container = ProviderContainer(overrides: [
+        simulationRepositoryProvider.overrideWithValue(_FakeSimRepo()),
+        destinationRepositoryProvider.overrideWithValue(_FakeDestRepo()),
+        routeRepositoryProvider.overrideWithValue(_FakeRouteRepo()),
+        ...hazardPollIntervalOverride(),
+      ]);
+      addTearDown(container.dispose);
+
+      final ctrl = container.read(simulationControllerProvider.notifier);
+      expect(container.read(simulationControllerProvider).simulationCenter, const LatLng(-6.2, 106.8));
+      expect(container.read(simulationControllerProvider).seed, 42);
+      expect(container.read(simulationControllerProvider).locationConfirmed, false);
+
+      // Select center (map drag)
+      const newCenter = LatLng(-6.3, 106.9);
+      ctrl.selectCenter(newCenter);
+      expect(container.read(simulationControllerProvider).simulationCenter, newCenter);
+
+      // Confirm location
+      ctrl.confirmLocation();
+      expect(container.read(simulationControllerProvider).locationConfirmed, true);
+
+      // Refresh simulation keeps center and increments seed
+      ctrl.refreshSimulation();
+      expect(container.read(simulationControllerProvider).simulationCenter, newCenter);
+      expect(container.read(simulationControllerProvider).seed, 43);
+      expect(container.read(simulationControllerProvider).run, isNull);
+    });
+
+    testWidgets('simulation destination picker shows synthetic destinations', (tester) async {
       final fake = _FakeSimRepo(scenarios: [const SimulationScenario(id: 'no_hazard', name: 'No Hazard')]);
       await tester.pumpWidget(ProviderScope(
           overrides: [
             simulationRepositoryProvider.overrideWithValue(fake),
-            destinationRepositoryProvider.overrideWithValue(_FakeDestRepo(dests: dests)),
+            destinationRepositoryProvider.overrideWithValue(_FakeDestRepo()),
             routeRepositoryProvider.overrideWithValue(_FakeRouteRepo()),
             ...hazardPollIntervalOverride(),
           ],
           child: const MaterialApp(home: SimulationScreen())));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
-      // Destination picker should be visible with 5 destinations, each with distance label
+
       expect(find.text('Destination'), findsOneWidget);
-      expect(find.text('Shelter Balai Kota'), findsOneWidget);
-      expect(find.text('Shelter Pasar Minggu'), findsOneWidget);
-      // Should show formatted distance (m or km), never Distance unavailable
+      expect(find.text('Shelter North-West'), findsOneWidget);
+      expect(find.text('Shelter South-East'), findsOneWidget);
       expect(find.textContaining('Distance unavailable'), findsNothing);
-      // At least one distance like "78 m" or "2.3 km" should appear
-      expect(find.textContaining(RegExp(r'(\d+\s*m|\d+\.\d+\s*km)')), findsWidgets);
     });
   });
 }

@@ -10,6 +10,8 @@ use App\Modules\Routing\Support\GraphBuilder;
 use App\Modules\Simulation\Support\SyntheticNetworkGenerator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Random\Engine\Mt19937;
+use Random\Randomizer;
 
 final class SimulationService
 {
@@ -172,10 +174,22 @@ final class SimulationService
                 'updated_at' => now(),
             ]);
         }
-        // Use first synthetic destination for routing (within simulation area).
-        $destIdForRun = $syntheticDests[0]['id'];
+
+        // Match selected synthetic destination or fall back to first
+        $chosenDest = null;
+        foreach ($syntheticDests as $d) {
+            if ($d['id'] === $destinationId) {
+                $chosenDest = $d;
+                break;
+            }
+        }
+        if ($chosenDest === null) {
+            $chosenDest = $syntheticDests[0];
+        }
+        $destIdForRun = $chosenDest['id'];
+
         $originNode = $this->findNearestSyntheticNode($centerLat, $centerLng, $nodes);
-        $destNode = $this->findNearestSyntheticNode($syntheticDests[0]['lat'], $syntheticDests[0]['lng'], $nodes);
+        $destNode = $this->findNearestSyntheticNode($chosenDest['lat'], $chosenDest['lng'], $nodes);
 
         DB::table('simulation_runs')->insert([
             'id' => $runId,
@@ -189,11 +203,17 @@ final class SimulationService
             'completed_at' => null,
         ]);
 
-        // Generate scenario-specific hazards on synthetic segments.
-        [$hazardRecords, $hazardIds] = $this->createSyntheticHazards($runId, $scenarioId, $segments, $seed);
+        // Compute initial clean baseline path to target hazard placement on actual baseline path
+        $nodeIds = array_column($nodes, 'id');
+        $cleanSegmentsForGraph = $this->segmentsWithHazardsForGraph($segments, [], []);
+        $cleanGraph = $this->graphBuilder->build($nodeIds, $cleanSegmentsForGraph);
+        $initialBaseline = $this->routingService->findRouteOnGraph($originNode, $destNode, $cleanGraph);
+        $baselinePathSegments = $initialBaseline['success'] ? $initialBaseline['road_segment_ids'] : [];
+
+        // Generate scenario-specific hazards targeting baseline path segments
+        [$hazardRecords, $hazardIds] = $this->createSyntheticHazards($runId, $scenarioId, $segments, $seed, $baselinePathSegments);
 
         // Build graphs in-memory from synthetic network.
-        $nodeIds = array_column($nodes, 'id');
         $baselineSegments = $this->segmentsWithHazardsForGraph($segments, [], $hazardIds);
         $riskSegments = $this->segmentsWithHazardsForGraph($segments, $this->hazardsForGraph($hazardIds), []);
 
@@ -240,6 +260,10 @@ final class SimulationService
             'center' => $center,
             'seed' => $seed,
             'synthetic_destinations' => $syntheticDests,
+            'network' => [
+                'nodes' => array_map(fn ($n) => ['id' => $n['id'], 'lat' => $n['lat'], 'lng' => $n['lng'], 'label' => $n['label']], $nodes),
+                'segments' => array_map(fn ($s) => ['id' => $s['id'], 'from' => $s['from'], 'to' => $s['to'], 'wkt' => $s['wkt']], $segments),
+            ],
         ];
     }
 
@@ -256,31 +280,33 @@ final class SimulationService
                 $best = $n['id'];
             }
         }
+
         return $best;
     }
 
-    private function createSyntheticHazards(string $runId, string $scenarioId, array $segments, int $seed): array
+    private function createSyntheticHazards(string $runId, string $scenarioId, array $segments, int $seed, array $preferredSegmentIds = []): array
     {
-        $rand = new \Random\Randomizer(new \Random\Engine\Mt19937($seed + crc32($scenarioId)));
+        $rand = new Randomizer(new Mt19937($seed + crc32($scenarioId)));
         $records = [];
         $ids = [];
 
-        $pickSegment = function () use ($segments, $rand): array {
-            $idx = $rand->getInt(0, count($segments) - 1);
-            return $segments[$idx];
+        $candidateSegments = array_values(array_filter($segments, fn ($s) => in_array($s['id'], $preferredSegmentIds, true)));
+        if (empty($candidateSegments)) {
+            $candidateSegments = $segments;
+        }
+
+        $pickSegment = function () use ($candidateSegments, $rand): array {
+            $idx = $rand->getInt(0, count($candidateSegments) - 1);
+
+            return $candidateSegments[$idx];
         };
 
-        $makeHazard = function (array $seg, string $type, string $severity, string $roadImpact, float $conf, string $status) use ($runId, &$records, &$ids) {
+        $makeHazard = function (array $seg, string $type, string $severity, string $roadImpact, float $conf, string $status) use (&$records, &$ids) {
             $hid = (string) Str::uuid();
             $coords = DB::selectOne('SELECT ST_X(ST_Centroid(geom::geometry)) as lng, ST_Y(ST_Centroid(geom::geometry)) as lat FROM road_segments WHERE id = ?', [$seg['id']]);
             $lat = $coords ? (float) $coords->lat : 0;
             $lng = $coords ? (float) $coords->lng : 0;
-            // For synthetic, coordinates are already known; use segment centroid from wkt.
-            if (!$coords) {
-                $lat = 0; $lng = 0;
-            }
-            // Derive lat/lng from segment wkt centroid approximation: use provided segment's midpoint via synthetic data.
-            // Instead use the synthetic node coords midpoint.
+
             DB::table('hazards')->insert([
                 'id' => $hid,
                 'type' => $type,
@@ -295,7 +321,7 @@ final class SimulationService
                 'updated_at' => now(),
             ]);
             $ids[] = $hid;
-            $records[] = ['hazard_id' => $hid, 'type' => $type, 'severity' => $severity, 'confidence' => $conf, 'road_impact' => $roadImpact, 'road_segment_id' => $seg['id'], 'status' => $status];
+            $records[] = ['hazard_id' => $hid, 'type' => $type, 'severity' => $severity, 'confidence' => $conf, 'road_impact' => $roadImpact, 'road_segment_id' => $seg['id'], 'status' => $status, 'location' => ['lat' => $lat, 'lng' => $lng]];
         };
 
         if ($scenarioId === 'no_hazard') {
@@ -334,12 +360,15 @@ final class SimulationService
                 'hazards' => $hazardsBySegment[$seg['id']] ?? [],
             ];
         }
+
         return $result;
     }
 
     private function hazardsForGraph(array $hazardIds): array
     {
-        if ($hazardIds === []) return [];
+        if ($hazardIds === []) {
+            return [];
+        }
         $rows = DB::table('hazards')->whereIn('id', $hazardIds)->get();
         $grouped = [];
         foreach ($rows as $r) {
@@ -350,6 +379,7 @@ final class SimulationService
                 'status' => $r->status,
             ];
         }
+
         return $grouped;
     }
 
@@ -452,7 +482,41 @@ final class SimulationService
 
         $originLoc = DB::selectOne('SELECT ST_X(origin::geometry) as lng, ST_Y(origin::geometry) as lat FROM simulation_runs WHERE id = ?', [$runId]);
 
-        return [
+        $syntheticDests = DB::table('destinations')
+            ->where('simulation_run_id', $runId)
+            ->selectRaw('id, name, type, ST_X(geom::geometry) as lng, ST_Y(geom::geometry) as lat')
+            ->get()
+            ->map(fn ($d) => [
+                'id' => $d->id,
+                'name' => $d->name,
+                'type' => $d->type,
+                'lat' => (float) $d->lat,
+                'lng' => (float) $d->lng,
+            ])->all();
+
+        $syntheticSegments = DB::table('road_segments')
+            ->where('simulation_run_id', $runId)
+            ->selectRaw('id, from_node_id as "from", to_node_id as "to", ST_AsText(geom::geometry) as wkt')
+            ->get()
+            ->map(fn ($s) => [
+                'id' => $s->id,
+                'from' => $s->from,
+                'to' => $s->to,
+                'wkt' => $s->wkt,
+            ])->all();
+
+        $syntheticNodes = DB::table('road_nodes')
+            ->where('simulation_run_id', $runId)
+            ->selectRaw('id, label, ST_X(geom::geometry) as lng, ST_Y(geom::geometry) as lat')
+            ->get()
+            ->map(fn ($n) => [
+                'id' => $n->id,
+                'label' => $n->label,
+                'lat' => (float) $n->lat,
+                'lng' => (float) $n->lng,
+            ])->all();
+
+        $res = [
             'run_id' => $run->id,
             'scenario_id' => $run->scenario_key,
             'status' => $run->status,
@@ -462,6 +526,18 @@ final class SimulationService
             'risk_aware_route' => $run->risk_aware_route_id ? $this->routeSummary($run->risk_aware_route_id) : null,
             'completed_at' => $run->completed_at,
         ];
+
+        if (! empty($syntheticDests)) {
+            $res['synthetic_destinations'] = $syntheticDests;
+        }
+        if (! empty($syntheticNodes) || ! empty($syntheticSegments)) {
+            $res['network'] = [
+                'nodes' => $syntheticNodes,
+                'segments' => $syntheticSegments,
+            ];
+        }
+
+        return $res;
     }
 
     private function routeSummary(string $routeId): array

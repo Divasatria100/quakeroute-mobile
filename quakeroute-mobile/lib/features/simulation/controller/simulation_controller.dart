@@ -120,12 +120,8 @@ class SimulationController extends StateNotifier<SimulationState> {
   Future<void> loadDestinations() async {
     state = state.copyWith(destinations: const UiLoading());
     try {
-      final list = await _ref.read(destinationRepositoryProvider).getDestinations();
+      final list = _generateSyntheticDestinations(state.simulationCenter, state.radiusM);
       if (!mounted) return;
-      if (list.isEmpty) {
-        state = state.copyWith(destinations: const UiEmpty());
-        return;
-      }
       state = state.copyWith(
         destinations: UiSuccess(list),
         selectedDestinationId: state.selectedDestinationId == null ? () => list.first.id : null,
@@ -136,13 +132,42 @@ class SimulationController extends StateNotifier<SimulationState> {
     }
   }
 
+  List<Destination> _generateSyntheticDestinations(LatLng center, int radiusM) {
+    final offsets = [
+      {'name': 'Shelter North-West', 'type': DestinationType.shelter, 'dx': -radiusM * 0.7, 'dy': radiusM * 0.7, 'id': 'synth-dest-1'},
+      {'name': 'Shelter South-East', 'type': DestinationType.shelter, 'dx': radiusM * 0.7, 'dy': -radiusM * 0.7, 'id': 'synth-dest-2'},
+      {'name': 'Medical North-East', 'type': DestinationType.medicalFacility, 'dx': radiusM * 0.6, 'dy': radiusM * 0.6, 'id': 'synth-dest-3'},
+      {'name': 'Medical South-West', 'type': DestinationType.medicalFacility, 'dx': -radiusM * 0.6, 'dy': -radiusM * 0.6, 'id': 'synth-dest-4'},
+      {'name': 'Shelter Central East', 'type': DestinationType.shelter, 'dx': radiusM * 0.5, 'dy': 0.0, 'id': 'synth-dest-5'},
+    ];
+    final cosVal = (center.lat * 3.141592653589793 / 180.0);
+    final cosLat = cosVal.abs() < 0.01 ? 0.01 : cosVal;
+    return offsets.map((o) {
+      final dy = o['dy'] as double;
+      final dx = o['dx'] as double;
+      final dLat = dy / 111000.0;
+      final dLng = dx / (111000.0 * cosLat);
+      return Destination(
+        id: o['id'] as String,
+        name: o['name'] as String,
+        type: o['type'] as DestinationType,
+        location: LatLng(center.lat + dLat, center.lng + dLng),
+      );
+    }).toList();
+  }
+
   void selectDestination(String destinationId) {
     state = state.copyWith(selectedDestinationId: () => destinationId);
   }
 
   void selectCenter(LatLng center) {
     // Update center without confirming — map drag.
-    state = state.copyWith(simulationCenter: center);
+    final list = _generateSyntheticDestinations(center, state.radiusM);
+    state = state.copyWith(
+      simulationCenter: center,
+      destinations: UiSuccess(list),
+      selectedDestinationId: state.selectedDestinationId == null ? () => list.first.id : null,
+    );
   }
 
   void confirmLocation() {
@@ -152,8 +177,10 @@ class SimulationController extends StateNotifier<SimulationState> {
   void refreshSimulation() {
     // Keep center, bump seed, clear previous run.
     final newSeed = state.seed + 1;
+    final list = _generateSyntheticDestinations(state.simulationCenter, state.radiusM);
     state = state.copyWith(
       seed: newSeed,
+      destinations: UiSuccess(list),
       clearRun: true,
       clearRunHandle: true,
       clearBaselineDetail: true,

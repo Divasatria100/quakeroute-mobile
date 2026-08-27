@@ -135,7 +135,9 @@ final class RouteService
         $sequence = 0;
         foreach ($segmentIds as $segId) {
             $seg = DB::table('road_segments')->where('id', $segId)->first();
-            if ($seg === null) continue;
+            if ($seg === null) {
+                continue;
+            }
             $q = DB::table('hazards')->where('road_segment_id', $segId);
             if ($excludeHazardIds !== []) {
                 $q->whereNotIn('id', $excludeHazardIds);
@@ -150,10 +152,18 @@ final class RouteService
             }
             $hazPenalty = app(HazardPenaltyCalculator::class)->calculateForSegment(array_map(fn ($h) => ['severity' => $h['severity'], 'confidence' => (float) $h['confidence']], $hazList));
             $uncPenalty = app(UncertaintyPenaltyCalculator::class)->calculateForSegment(array_column($hazList, 'status'));
-            if ($hazPenalty >= 1e10) $hazPenalty = 99999999.99;
-            if ($uncPenalty >= 1e10) $uncPenalty = 99999999.99;
-            if ($segmentCost >= 1e10) $segmentCost = (float) $seg->base_travel_cost + $hazPenalty + $uncPenalty;
-            if ($segmentCost >= 1e10) $segmentCost = 99999999.99;
+            if ($hazPenalty >= 1e10) {
+                $hazPenalty = 99999999.99;
+            }
+            if ($uncPenalty >= 1e10) {
+                $uncPenalty = 99999999.99;
+            }
+            if ($segmentCost >= 1e10) {
+                $segmentCost = (float) $seg->base_travel_cost + $hazPenalty + $uncPenalty;
+            }
+            if ($segmentCost >= 1e10) {
+                $segmentCost = 99999999.99;
+            }
 
             DB::table('route_segments')->insert([
                 'id' => (string) Str::uuid(),

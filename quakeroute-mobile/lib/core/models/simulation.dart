@@ -27,6 +27,8 @@ class SimulationRunHandle {
     this.riskAwareRouteId,
     this.baselineCost,
     this.riskAwareCost,
+    this.syntheticDestinations = const [],
+    this.network,
   });
 
   final String runId;
@@ -37,6 +39,8 @@ class SimulationRunHandle {
   final String? riskAwareRouteId;
   final double? baselineCost;
   final double? riskAwareCost;
+  final List<SimulationSyntheticDestination> syntheticDestinations;
+  final SimulationSyntheticNetwork? network;
 
   factory SimulationRunHandle.fromJson(Map<String, dynamic> json) =>
       SimulationRunHandle(
@@ -48,6 +52,12 @@ class SimulationRunHandle {
         riskAwareRouteId: json['risk_aware_route_id'] as String?,
         baselineCost: (json['baseline_cost'] as num?)?.toDouble(),
         riskAwareCost: (json['risk_aware_cost'] as num?)?.toDouble(),
+        syntheticDestinations: (json['synthetic_destinations'] as List<dynamic>? ?? [])
+            .map((e) => SimulationSyntheticDestination.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        network: json['network'] == null
+            ? null
+            : SimulationSyntheticNetwork.fromJson(json['network'] as Map<String, dynamic>),
       );
 }
 
@@ -63,6 +73,8 @@ class SimulationRun {
     this.riskAwareRoute,
     this.origin,
     this.completedAt,
+    this.syntheticDestinations = const [],
+    this.network,
   });
 
   final String runId;
@@ -73,6 +85,8 @@ class SimulationRun {
   final SimulationRouteSummary? riskAwareRoute;
   final LatLng? origin;
   final DateTime? completedAt;
+  final List<SimulationSyntheticDestination> syntheticDestinations;
+  final SimulationSyntheticNetwork? network;
 
   bool get isRunning => status == 'Running';
   bool get hasRoutes => baselineRoute != null || riskAwareRoute != null;
@@ -118,6 +132,12 @@ class SimulationRun {
         completedAt: json['completed_at'] == null
             ? null
             : DateTime.parse(json['completed_at'] as String),
+        syntheticDestinations: (json['synthetic_destinations'] as List<dynamic>? ?? [])
+            .map((e) => SimulationSyntheticDestination.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        network: json['network'] == null
+            ? null
+            : SimulationSyntheticNetwork.fromJson(json['network'] as Map<String, dynamic>),
       );
 }
 
@@ -267,6 +287,115 @@ class SimulationRouteSegment {
         roadSegmentId: json['road_segment_id'] as String,
         fromNodeId: json['from_node_id'] as String?,
         toNodeId: json['to_node_id'] as String?,
+      );
+}
+
+class SimulationSyntheticDestination {
+  const SimulationSyntheticDestination({
+    required this.id,
+    required this.name,
+    required this.type,
+    required this.location,
+  });
+
+  final String id;
+  final String name;
+  final String type;
+  final LatLng location;
+
+  factory SimulationSyntheticDestination.fromJson(Map<String, dynamic> json) =>
+      SimulationSyntheticDestination(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        type: json['type'] as String,
+        location: LatLng(
+          (json['lat'] as num).toDouble(),
+          (json['lng'] as num).toDouble(),
+        ),
+      );
+}
+
+class SimulationSyntheticNode {
+  const SimulationSyntheticNode({
+    required this.id,
+    required this.label,
+    required this.location,
+  });
+
+  final String id;
+  final String label;
+  final LatLng location;
+
+  factory SimulationSyntheticNode.fromJson(Map<String, dynamic> json) =>
+      SimulationSyntheticNode(
+        id: json['id'] as String,
+        label: json['label'] as String? ?? '',
+        location: LatLng(
+          (json['lat'] as num).toDouble(),
+          (json['lng'] as num).toDouble(),
+        ),
+      );
+}
+
+class SimulationSyntheticSegment {
+  const SimulationSyntheticSegment({
+    required this.id,
+    required this.fromNodeId,
+    required this.toNodeId,
+    required this.coordinates,
+  });
+
+  final String id;
+  final String fromNodeId;
+  final String toNodeId;
+  final List<LatLng> coordinates;
+
+  factory SimulationSyntheticSegment.fromJson(Map<String, dynamic> json) {
+    final wkt = json['wkt'] as String? ?? '';
+    final coords = <LatLng>[];
+
+    // Parse WKT "LINESTRING(lng1 lat1, lng2 lat2)"
+    final match = RegExp(r'LINESTRING\s*\((.*?)\)', caseSensitive: false).firstMatch(wkt);
+    if (match != null && match.group(1) != null) {
+      final pairs = match.group(1)!.split(',');
+      for (final p in pairs) {
+        final parts = p.trim().split(RegExp(r'\s+'));
+        if (parts.length >= 2) {
+          final lng = double.tryParse(parts[0]);
+          final lat = double.tryParse(parts[1]);
+          if (lat != null && lng != null) {
+            coords.add(LatLng(lat, lng));
+          }
+        }
+      }
+    }
+
+    return SimulationSyntheticSegment(
+      id: json['id'] as String,
+      fromNodeId: json['from'] as String? ?? '',
+      toNodeId: json['to'] as String? ?? '',
+      coordinates: coords,
+    );
+  }
+}
+
+class SimulationSyntheticNetwork {
+  const SimulationSyntheticNetwork({
+    required this.nodes,
+    required this.segments,
+  });
+
+  final List<SimulationSyntheticNode> nodes;
+  final List<SimulationSyntheticSegment> segments;
+
+  factory SimulationSyntheticNetwork.fromJson(Map<String, dynamic> json) =>
+      SimulationSyntheticNetwork(
+        nodes: (json['nodes'] as List<dynamic>? ?? [])
+            .map((e) => SimulationSyntheticNode.fromJson(e as Map<String, dynamic>))
+            .toList(),
+        segments: (json['segments'] as List<dynamic>? ?? [])
+            .map((e) => SimulationSyntheticSegment.fromJson(e as Map<String, dynamic>))
+            .toList(),
       );
 }
 

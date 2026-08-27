@@ -29,7 +29,7 @@ final class SyntheticNetworkGenerator
         $nodeIds = [];
         $nodeCoords = []; // id => [lat,lng]
 
-        $labels = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P'];
+        $labels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P'];
 
         for ($r = 0; $r < $rows; $r++) {
             for ($c = 0; $c < $cols; $c++) {
@@ -44,7 +44,7 @@ final class SyntheticNetworkGenerator
                 $lat = $centerLat + $dLat;
                 $lng = $centerLng + $dLng;
                 $id = $this->deterministicUuid($seed, 'node', $idx, $centerLat, $centerLng);
-                $nodes[] = ['id' => $id, 'lat' => $lat, 'lng' => $lng, 'label' => $labels[$idx] ?? (string)$idx];
+                $nodes[] = ['id' => $id, 'lat' => $lat, 'lng' => $lng, 'label' => $labels[$idx] ?? (string) $idx];
                 $nodeIds[] = $id;
                 $nodeCoords[$id] = [$lat, $lng];
             }
@@ -125,18 +125,22 @@ final class SyntheticNetworkGenerator
     {
         $dLat = $dy / 111000.0;
         $cos = cos(deg2rad($centerLat));
-        if (abs($cos) < 0.01) $cos = 0.01;
+        if (abs($cos) < 0.01) {
+            $cos = 0.01;
+        }
         $dLng = $dx / (111000.0 * $cos);
+
         return [$dLat, $dLng];
     }
 
     private function deterministicUuid(int $seed, string $prefix, int $idx, ?float $centerLat = null, ?float $centerLng = null): string
     {
-        $key = $seed . '-' . $prefix . '-' . $idx;
+        $key = $seed.'-'.$prefix.'-'.$idx;
         if ($centerLat !== null && $centerLng !== null) {
-            $key .= '-' . round($centerLat, 5) . '-' . round($centerLng, 5);
+            $key .= '-'.round($centerLat, 5).'-'.round($centerLng, 5);
         }
         $hash = md5($key);
+
         return sprintf('%s-%s-%s-%s-%s', substr($hash, 0, 8), substr($hash, 8, 4), substr($hash, 12, 4), substr($hash, 16, 4), substr($hash, 20, 12));
     }
 }

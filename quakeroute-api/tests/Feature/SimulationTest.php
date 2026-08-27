@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Modules\Routing\Support\GraphBuilder;
 use App\Modules\Simulation\Services\SimulationService;
 use Database\Seeders\DestinationSeeder;
 use Database\Seeders\RoadNetworkSeeder;
@@ -122,6 +123,58 @@ final class SimulationTest extends TestCase
             $this->fail('Expected 422');
         } catch (HttpException $e) {
             $this->assertSame(422, $e->getStatusCode());
+        }
+    }
+
+    public function test_synthetic_scenario_generates_network_around_center_and_is_deterministic_by_seed(): void
+    {
+        $center = ['lat' => -6.25, 'lng' => 106.85];
+        $result1 = $this->service()->runScenario('blocked_road', $center, 'synth-dest-placeholder', $center, 12345, 1500);
+
+        $this->assertSame('Completed', $result1['status']);
+        $this->assertNotNull($result1['baseline_route_id']);
+        $this->assertNotNull($result1['risk_aware_route_id']);
+        $this->assertNotEmpty($result1['synthetic_destinations']);
+        $this->assertNotEmpty($result1['network']['nodes']);
+        $this->assertNotEmpty($result1['network']['segments']);
+
+        // Determinism: same center + same seed produces identical network
+        $result2 = $this->service()->runScenario('blocked_road', $center, 'synth-dest-placeholder', $center, 12345, 1500);
+        $this->assertSame($result1['network']['nodes'], $result2['network']['nodes']);
+
+        // Different seed produces different hazards/segments
+        $result3 = $this->service()->runScenario('blocked_road', $center, 'synth-dest-placeholder', $center, 99999, 1500);
+        $this->assertNotEquals($result1['hazards_created'], $result3['hazards_created']);
+    }
+
+    public function test_different_center_produces_different_network_location(): void
+    {
+        $centerA = ['lat' => -6.20, 'lng' => 106.80];
+        $centerB = ['lat' => -6.90, 'lng' => 107.60]; // Bandung area
+
+        $resA = $this->service()->runScenario('no_hazard', $centerA, 'd1', $centerA, 100, 1500);
+        $resB = $this->service()->runScenario('no_hazard', $centerB, 'd1', $centerB, 100, 1500);
+
+        $nodeA = $resA['network']['nodes'][0];
+        $nodeB = $resB['network']['nodes'][0];
+
+        $this->assertNotEquals($nodeA['lat'], $nodeB['lat']);
+        $this->assertNotEquals($nodeA['lng'], $nodeB['lng']);
+    }
+
+    public function test_synthetic_nodes_and_segments_marked_is_synthetic_and_isolated_from_global_graph(): void
+    {
+        $center = ['lat' => -6.30, 'lng' => 106.70];
+        $res = $this->service()->runScenario('blocked_road', $center, 'd1', $center, 555, 1500);
+
+        $syntheticNodesCount = DB::table('road_nodes')->where('is_synthetic', true)->where('simulation_run_id', $res['run_id'])->count();
+        $this->assertGreaterThan(0, $syntheticNodesCount);
+
+        // Global graph builder excludes synthetic rows
+        $globalGraph = app(GraphBuilder::class)->buildFromDatabase();
+        foreach (array_keys($globalGraph) as $nodeId) {
+            $isSynth = DB::table('road_nodes')->where('id', $nodeId)->value('is_synthetic');
+            $this->assertFalse((bool) $isSynth, "Global graph contained synthetic node $nodeId");
         }
     }
 
