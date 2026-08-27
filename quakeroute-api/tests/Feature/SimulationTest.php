@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Modules\Simulation\Services\SimulationService;
+use Database\Seeders\DestinationSeeder;
+use Database\Seeders\RoadNetworkSeeder;
 use Database\Seeders\SimulationScenarioSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
 
 final class SimulationTest extends TestCase
@@ -16,18 +19,23 @@ final class SimulationTest extends TestCase
 
     // Seeded deterministic network identifiers.
     private const NODE_A = '11111111-1111-1111-1111-111111111111';
+
     private const NODE_B = '22222222-2222-2222-2222-222222222222';
+
     private const NODE_D = '44444444-4444-4444-4444-444444444444';
+
     private const NODE_F = '66666666-6666-6666-6666-666666666666';
+
     private const SEG_B_C = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2';
+
     private const DEST_F = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb3';
 
     protected function setUp(): void
     {
         parent::setUp();
         $this->seed(SimulationScenarioSeeder::class);
-        $this->seed(\Database\Seeders\RoadNetworkSeeder::class);
-        $this->seed(\Database\Seeders\DestinationSeeder::class);
+        $this->seed(RoadNetworkSeeder::class);
+        $this->seed(DestinationSeeder::class);
     }
 
     private function service(): SimulationService
@@ -77,7 +85,7 @@ final class SimulationTest extends TestCase
 
         $this->assertNotEmpty($baselineSegments);
         $this->assertNotEmpty($riskSegments);
-        $this->assertNotContains(self::SEG_BBC, $riskSegments);
+        $this->assertNotContains(self::SEG_B_C, $riskSegments);
 
         // Baseline and risk-aware must differ (the route actually changed).
         $this->assertNotSame($baselineSegments, $riskSegments);
@@ -102,7 +110,7 @@ final class SimulationTest extends TestCase
         try {
             $this->service()->runScenario('does_not_exist', $this->origin(), self::DEST_F);
             $this->fail('Expected 404');
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+        } catch (HttpException $e) {
             $this->assertSame(404, $e->getStatusCode());
         }
     }
@@ -112,7 +120,7 @@ final class SimulationTest extends TestCase
         try {
             $this->service()->runScenario('blocked_road', $this->origin(), 'bbbbbbbb-bbbb-bbbb-bbbb-000000000000');
             $this->fail('Expected 422');
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+        } catch (HttpException $e) {
             $this->assertSame(422, $e->getStatusCode());
         }
     }
