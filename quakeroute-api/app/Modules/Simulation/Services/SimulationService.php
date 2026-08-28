@@ -470,7 +470,7 @@ final class SimulationService
             ->selectRaw('hazards.*, ST_X(hazards.location::geometry) as lng, ST_Y(hazards.location::geometry) as lat')
             ->get()
             ->map(fn ($r) => [
-                'hazard_id' => $r->hazard_id,
+                'hazard_id' => $r->id,
                 'type' => $r->type,
                 'road_impact' => $r->road_impact,
                 'severity' => $r->severity,

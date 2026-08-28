@@ -372,7 +372,6 @@ void main() {
       await ctrl.loadDestinations();
       ctrl.confirmLocation();
       final destsBefore = (container.read(simulationControllerProvider).destinations as UiSuccess<List<Destination>>).data;
-      final coordsBefore = destsBefore.map((d) => d.location).toList();
       ctrl.selectDestination(destsBefore.first.id);
       expect(container.read(simulationControllerProvider).selectedDestinationId, isNotNull);
       expect(container.read(simulationControllerProvider).locationConfirmed, true);

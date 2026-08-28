@@ -1,5 +1,6 @@
-import 'dart:math' as math;
 import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:crypto/crypto.dart' as crypto;
 
 import '../../../core/models/hazard.dart' show LatLng;
@@ -105,7 +106,12 @@ class SyntheticNetworkGenerator {
   }
 
   static String deterministicUuid(int seed, String prefix, int idx, double centerLat, double centerLng) {
-    final key = '$seed-$prefix-$idx-${centerLat.toStringAsFixed(5)}-${centerLng.toStringAsFixed(5)}';
+    // Match PHP: round(center,5) then string cast without trailing zeros (e.g. -6.2 not -6.20000)
+    final rLat = (centerLat * 1e5).round() / 1e5;
+    final rLng = (centerLng * 1e5).round() / 1e5;
+    final latStr = rLat.toString();
+    final lngStr = rLng.toString();
+    final key = '$seed-$prefix-$idx-$latStr-$lngStr';
     final hash = crypto.md5.convert(utf8.encode(key)).toString();
     return '${hash.substring(0,8)}-${hash.substring(8,12)}-${hash.substring(12,16)}-${hash.substring(16,20)}-${hash.substring(20,32)}';
   }
