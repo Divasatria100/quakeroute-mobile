@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,6 +8,7 @@ import '../../../core/models/route.dart';
 import '../../../core/models/simulation.dart';
 import '../../../core/state/app_providers.dart';
 import '../../../core/state/ui_state.dart';
+import '../support/synthetic_network_generator.dart';
 
 class SimulationState {
   const SimulationState({
@@ -27,6 +27,7 @@ class SimulationState {
     this.radiusM = 1500,
     this.locationConfirmed = false,
     this.confirmedCenter,
+    this.previewNetwork,
   });
 
   final UiState<List<SimulationScenario>> scenarios;
@@ -56,6 +57,10 @@ class SimulationState {
   /// Used to detect staleness when user pans after confirmation without regenerating.
   final LatLng? confirmedCenter;
 
+  /// Synthetic network generated at last confirmation (for preview routing).
+  /// Geographic-fixed until next confirm/refresh.
+  final Map<String, dynamic>? previewNetwork;
+
   /// Default center (initial viewport) — not a fixed simulation location.
   static const defaultSimulationCenter = LatLng(-6.2, 106.8);
 
@@ -65,6 +70,32 @@ class SimulationState {
     if (confirmedCenter == null) return false;
     return confirmedCenter!.lat != simulationCenter.lat ||
         confirmedCenter!.lng != simulationCenter.lng;
+  }
+
+  /// Preview polyline following synthetic network from simulationCenter to selected destination.
+  /// Returns null if no selection or no preview network.
+  List<LatLng>? get previewRoute {
+    if (selectedDestinationId == null) return null;
+    if (previewNetwork == null) return null;
+    if (destinations is! UiSuccess<List<Destination>>) return null;
+    final dests = (destinations as UiSuccess<List<Destination>>).data;
+    Destination? selected;
+    for (final d in dests) {
+      if (d.id == selectedDestinationId) {
+        selected = d;
+        break;
+      }
+    }
+    if (selected == null) return null;
+    final nodes = previewNetwork!['nodes'] as List<Map<String, dynamic>>;
+    final segments = previewNetwork!['segments'] as List<Map<String, dynamic>>;
+    // Use current simulationCenter as origin (reactive to pan)
+    return SyntheticNetworkGenerator.shortestPathWithCache(
+      nodes,
+      segments,
+      simulationCenter,
+      selected.location,
+    );
   }
 
   SimulationState copyWith({
@@ -88,6 +119,8 @@ class SimulationState {
     bool? locationConfirmed,
     LatLng? confirmedCenter,
     bool clearConfirmedCenter = false,
+    Map<String, dynamic>? previewNetwork,
+    bool clearPreviewNetwork = false,
   }) =>
       SimulationState(
         scenarios: scenarios ?? this.scenarios,
@@ -114,6 +147,8 @@ class SimulationState {
         locationConfirmed: locationConfirmed ?? this.locationConfirmed,
         confirmedCenter:
             clearConfirmedCenter ? null : (confirmedCenter ?? this.confirmedCenter),
+        previewNetwork:
+            clearPreviewNetwork ? null : (previewNetwork ?? this.previewNetwork),
       );
 }
 
@@ -155,43 +190,26 @@ class SimulationController extends StateNotifier<SimulationState> {
   }
 
   List<Destination> _generateSyntheticDestinations(LatLng center, int radiusM, int seed) {
-    // Seed-influenced offsets: rotation depends on seed so refresh produces
-    // visually different but still spatially meaningful destinations.
-    final baseOffsets = [
-      {'name': 'Shelter North-West', 'type': DestinationType.shelter, 'dx': -radiusM * 0.7, 'dy': radiusM * 0.7, 'id': 'synth-dest-1'},
-      {'name': 'Shelter South-East', 'type': DestinationType.shelter, 'dx': radiusM * 0.7, 'dy': -radiusM * 0.7, 'id': 'synth-dest-2'},
-      {'name': 'Medical North-East', 'type': DestinationType.medicalFacility, 'dx': radiusM * 0.6, 'dy': radiusM * 0.6, 'id': 'synth-dest-3'},
-      {'name': 'Medical South-West', 'type': DestinationType.medicalFacility, 'dx': -radiusM * 0.6, 'dy': -radiusM * 0.6, 'id': 'synth-dest-4'},
-      {'name': 'Shelter Central East', 'type': DestinationType.shelter, 'dx': radiusM * 0.5, 'dy': 0.0, 'id': 'synth-dest-5'},
-    ];
-    // Cheap deterministic rotation: 10 degrees per seed step.
-    const degPerSeed = 10.0;
-    final angleRad = (seed % 36) * degPerSeed * 3.141592653589793 / 180.0;
-    final cosA = _cos(angleRad);
-    final sinA = _sin(angleRad);
-    // Use proper radians for latitude scaling.
-    final latRad = center.lat * 3.141592653589793 / 180.0;
-    final cosLatRaw = _cos(latRad);
-    final cosLat = cosLatRaw.abs() < 0.01 ? 0.01 : cosLatRaw;
-    return baseOffsets.map((o) {
-      final dy0 = o['dy'] as double;
-      final dx0 = o['dx'] as double;
-      // Rotate (dx, dy) by angleRad to create seed variation while keeping radius.
-      final dx = dx0 * cosA - dy0 * sinA;
-      final dy = dx0 * sinA + dy0 * cosA;
-      final dLat = dy / 111000.0;
-      final dLng = dx / (111000.0 * cosLat);
-      return Destination(
-        id: o['id'] as String,
-        name: o['name'] as String,
-        type: o['type'] as DestinationType,
-        location: LatLng(center.lat + dLat, center.lng + dLng),
-      );
-    }).toList();
+    // Use SyntheticNetworkGenerator to stay consistent with backend for preview routing and destination IDs.
+    final gen = SyntheticNetworkGenerator.generate(center.lat, center.lng, seed, radiusM);
+    final dests = gen['destinations'] as List<Map<String, dynamic>>;
+    return dests
+        .map((d) => Destination(
+              id: d['id'] as String,
+              name: d['name'] as String,
+              type: DestinationType.fromApi(d['type'] as String),
+              location: LatLng(d['lat'] as double, d['lng'] as double),
+            ))
+        .toList();
   }
 
-  double _cos(double x) => math.cos(x);
-  double _sin(double x) => math.sin(x);
+  Map<String, dynamic> _generatePreviewNetwork(LatLng center, int radiusM, int seed) {
+    final gen = SyntheticNetworkGenerator.generate(center.lat, center.lng, seed, radiusM);
+    return {
+      'nodes': gen['nodes'],
+      'segments': gen['segments'],
+    };
+  }
 
   void selectDestination(String destinationId) {
     state = state.copyWith(selectedDestinationId: () => destinationId);
@@ -236,11 +254,17 @@ class SimulationController extends StateNotifier<SimulationState> {
       state.radiusM,
       state.seed,
     );
+    final previewNet = _generatePreviewNetwork(
+      state.simulationCenter,
+      state.radiusM,
+      state.seed,
+    );
     state = state.copyWith(
       locationConfirmed: true,
       confirmedCenter: state.simulationCenter,
       destinations: UiSuccess(list),
       selectedDestinationId: () => null,
+      previewNetwork: previewNet,
     );
   }
 
@@ -248,12 +272,15 @@ class SimulationController extends StateNotifier<SimulationState> {
     // Keep center, bump seed, clear previous run/markers/selection, regenerate.
     final newSeed = state.seed + 1;
     final list = _generateSyntheticDestinations(state.simulationCenter, state.radiusM, newSeed);
+    final previewNet = _generatePreviewNetwork(state.simulationCenter, state.radiusM, newSeed);
     state = state.copyWith(
       seed: newSeed,
       destinations: UiSuccess(list),
       selectedDestinationId: () => null,
       locationConfirmed: false,
       clearConfirmedCenter: true,
+      clearPreviewNetwork: false,
+      previewNetwork: previewNet,
       clearRun: true,
       clearRunHandle: true,
       clearBaselineDetail: true,

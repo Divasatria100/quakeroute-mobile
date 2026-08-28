@@ -19,7 +19,10 @@ class SimulationRunRequest extends FormRequest
             'origin' => ['required', 'array'],
             'origin.lat' => ['required', 'numeric', 'between:-90,90'],
             'origin.lng' => ['required', 'numeric', 'between:-180,180'],
-            'destination_id' => ['required', 'uuid', 'exists:destinations,id'],
+            // Synthetic mode (center present) generates destinations on-the-fly,
+            // so destination_id may be a synthetic UUID not yet in DB.
+            // Allow any string/uuid here; existence is validated in service for non-synthetic mode.
+            'destination_id' => ['required', 'string', 'max:36'],
             'center' => ['nullable', 'array'],
             'center.lat' => ['required_with:center', 'numeric', 'between:-90,90'],
             'center.lng' => ['required_with:center', 'numeric', 'between:-180,180'],

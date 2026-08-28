@@ -461,6 +461,21 @@ class _CrosshairSelectionMap extends ConsumerWidget {
         );
       }
     }
+    // Route preview: follows synthetic road network (not straight line), reactive to simulationCenter & selection.
+    final List<Polyline<Object>> previewPolylines = [];
+    final previewRoute = state.previewRoute;
+    if (previewRoute != null && state.run == null) {
+      // previewRoute already follows synthetic network via Dijkstra, includes origin->nodes->dest
+      previewPolylines.add(
+        Polyline<Object>(
+          points: previewRoute.map((c) => ll.LatLng(c.lat, c.lng)).toList(),
+          color: QRTokens.accentCyan,
+          strokeWidth: 3.5,
+          borderColor: Colors.white.withValues(alpha: 0.85),
+          borderStrokeWidth: 1.2,
+        ),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -482,6 +497,7 @@ class _CrosshairSelectionMap extends ConsumerWidget {
                 QRMapCanvas(
                   center: ll.LatLng(center.lat, center.lng),
                   markers: destMarkers,
+                  polylines: previewPolylines,
                   mapController: mapController,
                   onPositionChanged: (camera, hasGesture) {
                     // Map moves, crosshair stays — update center.
