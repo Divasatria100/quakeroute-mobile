@@ -226,6 +226,11 @@ void main() {
         ...hazardPollIntervalOverride(),
       ]);
       final ctrl = container.read(simulationControllerProvider.notifier);
+      await ctrl.loadDestinations();
+      ctrl.confirmLocation();
+      // Select first synthetic destination explicitly
+      final dests = (container.read(simulationControllerProvider).destinations as UiSuccess<List<Destination>>).data;
+      ctrl.selectDestination(dests.first.id);
       // First run
       await ctrl.runScenario('no_hazard');
       // Wait a tick for enrichment
@@ -326,6 +331,10 @@ void main() {
       addTearDown(container.dispose);
       final ctrl = container.read(simulationControllerProvider.notifier);
       await ctrl.loadScenarios();
+      await ctrl.loadDestinations();
+      ctrl.confirmLocation();
+      final dests2 = (container.read(simulationControllerProvider).destinations as UiSuccess<List<Destination>>).data;
+      ctrl.selectDestination(dests2.first.id);
       await ctrl.runScenario('blocked_road');
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final state = container.read(simulationControllerProvider);
@@ -373,6 +382,10 @@ void main() {
       addTearDown(container.dispose);
       final ctrl = container.read(simulationControllerProvider.notifier);
       await ctrl.loadScenarios();
+      await ctrl.loadDestinations();
+      ctrl.confirmLocation();
+      final dests3 = (container.read(simulationControllerProvider).destinations as UiSuccess<List<Destination>>).data;
+      ctrl.selectDestination(dests3.first.id);
       await ctrl.runScenario('blocked_road');
       await Future<void>.delayed(const Duration(milliseconds: 50));
       final state = container.read(simulationControllerProvider);

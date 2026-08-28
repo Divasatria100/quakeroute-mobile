@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,6 +26,7 @@ class SimulationState {
     this.seed = 42,
     this.radiusM = 1500,
     this.locationConfirmed = false,
+    this.confirmedCenter,
   });
 
   final UiState<List<SimulationScenario>> scenarios;
@@ -50,8 +52,20 @@ class SimulationState {
   final int radiusM;
   final bool locationConfirmed;
 
+  /// Center that was last confirmed via `Use This Location`.
+  /// Used to detect staleness when user pans after confirmation without regenerating.
+  final LatLng? confirmedCenter;
+
   /// Default center (initial viewport) — not a fixed simulation location.
   static const defaultSimulationCenter = LatLng(-6.2, 106.8);
+
+  /// True when location was confirmed but simulationCenter has drifted.
+  bool get isCenterStale {
+    if (!locationConfirmed) return false;
+    if (confirmedCenter == null) return false;
+    return confirmedCenter!.lat != simulationCenter.lat ||
+        confirmedCenter!.lng != simulationCenter.lng;
+  }
 
   SimulationState copyWith({
     UiState<List<SimulationScenario>>? scenarios,
@@ -72,6 +86,8 @@ class SimulationState {
     int? seed,
     int? radiusM,
     bool? locationConfirmed,
+    LatLng? confirmedCenter,
+    bool clearConfirmedCenter = false,
   }) =>
       SimulationState(
         scenarios: scenarios ?? this.scenarios,
@@ -96,6 +112,8 @@ class SimulationState {
         seed: seed ?? this.seed,
         radiusM: radiusM ?? this.radiusM,
         locationConfirmed: locationConfirmed ?? this.locationConfirmed,
+        confirmedCenter:
+            clearConfirmedCenter ? null : (confirmedCenter ?? this.confirmedCenter),
       );
 }
 
@@ -120,11 +138,15 @@ class SimulationController extends StateNotifier<SimulationState> {
   Future<void> loadDestinations() async {
     state = state.copyWith(destinations: const UiLoading());
     try {
-      final list = _generateSyntheticDestinations(state.simulationCenter, state.radiusM);
+      final list = _generateSyntheticDestinations(
+        state.simulationCenter,
+        state.radiusM,
+        state.seed,
+      );
       if (!mounted) return;
       state = state.copyWith(
         destinations: UiSuccess(list),
-        selectedDestinationId: state.selectedDestinationId == null ? () => list.first.id : null,
+        selectedDestinationId: () => null,
       );
     } catch (e) {
       if (!mounted) return;
@@ -132,19 +154,31 @@ class SimulationController extends StateNotifier<SimulationState> {
     }
   }
 
-  List<Destination> _generateSyntheticDestinations(LatLng center, int radiusM) {
-    final offsets = [
+  List<Destination> _generateSyntheticDestinations(LatLng center, int radiusM, int seed) {
+    // Seed-influenced offsets: rotation depends on seed so refresh produces
+    // visually different but still spatially meaningful destinations.
+    final baseOffsets = [
       {'name': 'Shelter North-West', 'type': DestinationType.shelter, 'dx': -radiusM * 0.7, 'dy': radiusM * 0.7, 'id': 'synth-dest-1'},
       {'name': 'Shelter South-East', 'type': DestinationType.shelter, 'dx': radiusM * 0.7, 'dy': -radiusM * 0.7, 'id': 'synth-dest-2'},
       {'name': 'Medical North-East', 'type': DestinationType.medicalFacility, 'dx': radiusM * 0.6, 'dy': radiusM * 0.6, 'id': 'synth-dest-3'},
       {'name': 'Medical South-West', 'type': DestinationType.medicalFacility, 'dx': -radiusM * 0.6, 'dy': -radiusM * 0.6, 'id': 'synth-dest-4'},
       {'name': 'Shelter Central East', 'type': DestinationType.shelter, 'dx': radiusM * 0.5, 'dy': 0.0, 'id': 'synth-dest-5'},
     ];
-    final cosVal = (center.lat * 3.141592653589793 / 180.0);
-    final cosLat = cosVal.abs() < 0.01 ? 0.01 : cosVal;
-    return offsets.map((o) {
-      final dy = o['dy'] as double;
-      final dx = o['dx'] as double;
+    // Cheap deterministic rotation: 10 degrees per seed step.
+    const degPerSeed = 10.0;
+    final angleRad = (seed % 36) * degPerSeed * 3.141592653589793 / 180.0;
+    final cosA = _cos(angleRad);
+    final sinA = _sin(angleRad);
+    // Use proper radians for latitude scaling.
+    final latRad = center.lat * 3.141592653589793 / 180.0;
+    final cosLatRaw = _cos(latRad);
+    final cosLat = cosLatRaw.abs() < 0.01 ? 0.01 : cosLatRaw;
+    return baseOffsets.map((o) {
+      final dy0 = o['dy'] as double;
+      final dx0 = o['dx'] as double;
+      // Rotate (dx, dy) by angleRad to create seed variation while keeping radius.
+      final dx = dx0 * cosA - dy0 * sinA;
+      final dy = dx0 * sinA + dy0 * cosA;
       final dLat = dy / 111000.0;
       final dLng = dx / (111000.0 * cosLat);
       return Destination(
@@ -156,36 +190,76 @@ class SimulationController extends StateNotifier<SimulationState> {
     }).toList();
   }
 
+  double _cos(double x) => math.cos(x);
+  double _sin(double x) => math.sin(x);
+
   void selectDestination(String destinationId) {
     state = state.copyWith(selectedDestinationId: () => destinationId);
   }
 
   void selectCenter(LatLng center) {
-    // Update center without confirming — map drag.
-    final list = _generateSyntheticDestinations(center, state.radiusM);
-    state = state.copyWith(
-      simulationCenter: center,
-      destinations: UiSuccess(list),
-      selectedDestinationId: state.selectedDestinationId == null ? () => list.first.id : null,
-    );
+    // Map pan — update simulationCenter only. Do NOT regenerate destinations.
+    // Destination set is geographic-fixed until next explicit generation
+    // (confirmLocation / refreshSimulation). This keeps markers from
+    // appearing to follow the crosshair.
+    // If already confirmed, panning makes center stale and clears selection
+    // to avoid showing a selected destination that appears to belong to the new center.
+    if (state.simulationCenter.lat == center.lat &&
+        state.simulationCenter.lng == center.lng) {
+      return;
+    }
+    final bool wasConfirmed = state.locationConfirmed;
+    if (wasConfirmed) {
+      // Keep destinations visible but clear stale selection and keep confirmedCenter for stale detection.
+      final bool willBeStale = state.confirmedCenter != null &&
+          (state.confirmedCenter!.lat != center.lat ||
+              state.confirmedCenter!.lng != center.lng);
+      if (willBeStale && state.selectedDestinationId != null) {
+        state = state.copyWith(
+          simulationCenter: center,
+          selectedDestinationId: () => null,
+        );
+      } else {
+        state = state.copyWith(simulationCenter: center);
+      }
+    } else {
+      state = state.copyWith(simulationCenter: center);
+    }
   }
 
   void confirmLocation() {
-    state = state.copyWith(locationConfirmed: true);
+    // Generate fixed destination set around current simulationCenter + seed.
+    // Coordinates remain stable until next regeneration (refresh or re-confirm).
+    // This is the ONLY place where destinations are (re)generated for a center.
+    final list = _generateSyntheticDestinations(
+      state.simulationCenter,
+      state.radiusM,
+      state.seed,
+    );
+    state = state.copyWith(
+      locationConfirmed: true,
+      confirmedCenter: state.simulationCenter,
+      destinations: UiSuccess(list),
+      selectedDestinationId: () => null,
+    );
   }
 
   void refreshSimulation() {
-    // Keep center, bump seed, clear previous run.
+    // Keep center, bump seed, clear previous run/markers/selection, regenerate.
     final newSeed = state.seed + 1;
-    final list = _generateSyntheticDestinations(state.simulationCenter, state.radiusM);
+    final list = _generateSyntheticDestinations(state.simulationCenter, state.radiusM, newSeed);
     state = state.copyWith(
       seed: newSeed,
       destinations: UiSuccess(list),
+      selectedDestinationId: () => null,
+      locationConfirmed: false,
+      clearConfirmedCenter: true,
       clearRun: true,
       clearRunHandle: true,
       clearBaselineDetail: true,
       clearRiskAwareDetail: true,
       error: () => null,
+      selectedScenarioId: () => null,
     );
   }
 
@@ -203,26 +277,17 @@ class SimulationController extends StateNotifier<SimulationState> {
     );
     try {
       // Crosshair-based simulation origin — never device GPS.
-      final center = state.simulationCenter;
-      final origin = center;
+      // Require explicit destination selection; no silent fallback.
+      if (!state.locationConfirmed) {
+        throw Exception('Please confirm location first');
+      }
       final destId = state.selectedDestinationId;
       if (destId == null) {
-        // Lazy-load destinations if not yet loaded.
-        try {
-          final dests =
-              await _ref.read(destinationRepositoryProvider).getDestinations();
-          if (dests.isEmpty) throw Exception('No destinations');
-          if (!mounted) return;
-          state = state.copyWith(
-            destinations: UiSuccess(dests),
-            selectedDestinationId: () => dests.first.id,
-          );
-        } catch (_) {
-          throw Exception('No destination available to run simulation');
-        }
+        throw Exception('Please select a destination');
       }
-      final effectiveDestId = state.selectedDestinationId;
-      if (effectiveDestId == null) throw Exception('No destination selected');
+      final effectiveDestId = destId;
+      final center = state.simulationCenter;
+      final origin = center;
       final handle = await _ref.read(simulationRepositoryProvider).runScenario(
             scenarioId: scenarioId,
             origin: origin,

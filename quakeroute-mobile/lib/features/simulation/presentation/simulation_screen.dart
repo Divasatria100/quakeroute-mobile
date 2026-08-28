@@ -172,32 +172,56 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
         children: [
           _CrosshairSelectionMap(state: s, mapController: _selectionMapController),
           const SizedBox(height: QRTokens.spaceMd),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => ref.read(simulationControllerProvider.notifier).confirmLocation(),
-                  icon: const Icon(Icons.my_location, size: 16),
-                  label: Text(s.locationConfirmed ? 'Location Confirmed' : 'Use This Location'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: s.locationConfirmed ? QRTokens.semanticSafe : QRTokens.accentCyan,
-                    foregroundColor: QRTokens.textOnAccent,
+          Builder(builder: (context) {
+            final isStale = s.isCenterStale;
+            final isConfirmedAndFresh = s.locationConfirmed && !isStale;
+            return Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () => ref.read(simulationControllerProvider.notifier).confirmLocation(),
+                    icon: Icon(isConfirmedAndFresh ? Icons.check_circle : Icons.my_location, size: 16),
+                    label: Text(isConfirmedAndFresh ? 'Location Confirmed' : 'Use This Location'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isConfirmedAndFresh ? QRTokens.semanticSafe : QRTokens.accentCyan,
+                      foregroundColor: QRTokens.textOnAccent,
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(width: QRTokens.spaceSm),
-              OutlinedButton.icon(
-                onPressed: () => ref.read(simulationControllerProvider.notifier).refreshSimulation(),
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Refresh'),
-              ),
-            ],
-          ),
-          if (s.locationConfirmed) ...[
+                const SizedBox(width: QRTokens.spaceSm),
+                OutlinedButton.icon(
+                  onPressed: () => ref.read(simulationControllerProvider.notifier).refreshSimulation(),
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Refresh'),
+                ),
+              ],
+            );
+          }),
+          if (s.locationConfirmed && !s.isCenterStale) ...[
             const SizedBox(height: 4),
             Text('Seed: ${s.seed} • Radius: ${s.radiusM} m',
                 style: const TextStyle(fontSize: 10, color: QRTokens.textDisabled)),
           ],
+          if (s.isCenterStale)
+            Container(
+              margin: const EdgeInsets.only(top: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: QRTokens.semanticWarning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(QRTokens.radiusSm),
+                border: Border.all(color: QRTokens.semanticWarning.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, size: 14, color: QRTokens.semanticWarning),
+                  SizedBox(width: 6),
+                  Expanded(
+                    child: Text('Location changed — confirm to update destinations.',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: QRTokens.semanticWarning)),
+                  ),
+                ],
+              ),
+            ),
           const SizedBox(height: QRTokens.spaceLg),
           _DestinationPicker(state: s),
           const SizedBox(height: QRTokens.spaceLg),
@@ -206,17 +230,31 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: QRTokens.textSecondary)),
+          if (!s.locationConfirmed)
+            const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 8),
+              child: Text('Confirm location and select a destination to run a scenario.',
+                  style: TextStyle(fontSize: 11, color: QRTokens.textDisabled)),
+            )
+          else if (s.selectedDestinationId == null)
+            const Padding(
+              padding: EdgeInsets.only(top: 4, bottom: 8),
+              child: Text('Select a destination marker or card to enable Run.',
+                  style: TextStyle(fontSize: 11, color: QRTokens.semanticWarning)),
+            ),
           const SizedBox(height: QRTokens.spaceSm),
-          ...list.map((sc) => _ScenarioCard(
-                scenario: sc,
-                selected: s.selectedScenarioId == sc.id,
-                running: s.running && s.selectedScenarioId == sc.id,
-                onTap: s.running
-                    ? null
-                    : () => ref
-                        .read(simulationControllerProvider.notifier)
-                        .runScenario(sc.id),
-              )),
+          ...list.map((sc) {
+            final canRun = s.locationConfirmed && s.selectedDestinationId != null && !s.running;
+            return _ScenarioCard(
+              scenario: sc,
+              selected: s.selectedScenarioId == sc.id,
+              running: s.running && s.selectedScenarioId == sc.id,
+              enabled: canRun,
+              onTap: canRun
+                  ? () => ref.read(simulationControllerProvider.notifier).runScenario(sc.id)
+                  : null,
+            );
+          }),
           if (s.error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
@@ -260,38 +298,43 @@ class _SimulationScreenState extends ConsumerState<SimulationScreen> {
 
 class _ScenarioCard extends StatelessWidget {
   const _ScenarioCard(
-      {required this.scenario, required this.selected, required this.running, this.onTap});
+      {required this.scenario, required this.selected, required this.running, this.onTap, this.enabled = true});
   final SimulationScenario scenario;
   final bool selected;
   final bool running;
+  final bool enabled;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: selected ? QRTokens.accentCyan.withValues(alpha: 0.08) : null,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(QRTokens.radiusMd),
-        side: BorderSide(
-          color: selected ? QRTokens.accentCyan : QRTokens.borderDefault,
-          width: selected ? 1.5 : 1,
+    final dimmed = !enabled && !running;
+    return Opacity(
+      opacity: dimmed ? 0.55 : 1.0,
+      child: Card(
+        color: selected ? QRTokens.accentCyan.withValues(alpha: 0.08) : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(QRTokens.radiusMd),
+          side: BorderSide(
+            color: selected ? QRTokens.accentCyan : QRTokens.borderDefault,
+            width: selected ? 1.5 : 1,
+          ),
         ),
-      ),
-      child: ListTile(
-        title: Text(scenario.name,
-            style: TextStyle(
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-                color: selected ? QRTokens.accentCyan : QRTokens.textPrimary)),
-        subtitle: Text(scenario.id,
-            style: const TextStyle(fontSize: 12, color: QRTokens.textSecondary)),
-        trailing: running
-            ? const SizedBox(
-                width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-            : Icon(
-                selected ? Icons.check_circle : Icons.play_arrow,
-                color: selected ? QRTokens.accentCyan : QRTokens.textSecondary,
-              ),
-        onTap: onTap,
+        child: ListTile(
+          title: Text(scenario.name,
+              style: TextStyle(
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  color: dimmed ? QRTokens.textDisabled : (selected ? QRTokens.accentCyan : QRTokens.textPrimary))),
+          subtitle: Text(scenario.id,
+              style: const TextStyle(fontSize: 12, color: QRTokens.textSecondary)),
+          trailing: running
+              ? const SizedBox(
+                  width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : Icon(
+                  selected ? Icons.check_circle : Icons.play_arrow,
+                  color: dimmed ? QRTokens.textDisabled : (selected ? QRTokens.accentCyan : QRTokens.textSecondary),
+                ),
+          onTap: onTap,
+        ),
       ),
     );
   }
@@ -399,6 +442,25 @@ class _CrosshairSelectionMap extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final center = state.simulationCenter;
+    // Build destination markers only after locationConfirmed, using synthetic destinations.
+    final List<Marker> destMarkers = [];
+    if (state.locationConfirmed && state.destinations is UiSuccess<List<Destination>>) {
+      final dests = (state.destinations as UiSuccess<List<Destination>>).data;
+      for (final d in dests) {
+        final isSelected = state.selectedDestinationId == d.id;
+        destMarkers.add(
+          Marker(
+            point: ll.LatLng(d.location.lat, d.location.lng),
+            width: 48,
+            height: 48,
+            child: GestureDetector(
+              onTap: () => ref.read(simulationControllerProvider.notifier).selectDestination(d.id),
+              child: _PreRunDestinationMarker(destination: d, isSelected: isSelected),
+            ),
+          ),
+        );
+      }
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -419,6 +481,7 @@ class _CrosshairSelectionMap extends ConsumerWidget {
               children: [
                 QRMapCanvas(
                   center: ll.LatLng(center.lat, center.lng),
+                  markers: destMarkers,
                   mapController: mapController,
                   onPositionChanged: (camera, hasGesture) {
                     // Map moves, crosshair stays — update center.
@@ -427,7 +490,7 @@ class _CrosshairSelectionMap extends ConsumerWidget {
                     ref.read(simulationControllerProvider.notifier).selectCenter(LatLng(c.latitude, c.longitude));
                   },
                 ),
-                // Fixed crosshair.
+                // Fixed crosshair — only screen-fixed overlay.
                 const Center(
                   child: IgnorePointer(
                     child: Icon(Icons.add, size: 32, color: QRTokens.semanticDanger, shadows: [Shadow(color: Colors.black45, blurRadius: 4)]),
@@ -450,6 +513,50 @@ class _CrosshairSelectionMap extends ConsumerWidget {
         const SizedBox(height: 4),
         const Text('Drag map — crosshair stays fixed. Tap Use This Location to lock center.',
             style: TextStyle(fontSize: 10, color: QRTokens.textDisabled)),
+      ],
+    );
+  }
+}
+
+class _PreRunDestinationMarker extends StatelessWidget {
+  const _PreRunDestinationMarker({required this.destination, required this.isSelected});
+  final Destination destination;
+  final bool isSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final isMedical = destination.type == DestinationType.medicalFacility;
+    // Use design tokens only. Unselected: white bg + cyan border. Selected: cyan fill + white icon + check indicator.
+    return Stack(
+      clipBehavior: Clip.none,
+      alignment: Alignment.center,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: isSelected ? QRTokens.accentCyan : QRTokens.bgSurface,
+            shape: BoxShape.circle,
+            border: Border.all(color: isSelected ? QRTokens.accentCyan : QRTokens.accentCyan, width: 2),
+            boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2))],
+          ),
+          child: Icon(
+            isMedical ? Icons.local_hospital : Icons.home_work,
+            size: QRTokens.iconMd,
+            color: isSelected ? Colors.white : QRTokens.accentCyan,
+          ),
+        ),
+        if (isSelected)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              width: 14,
+              height: 14,
+              decoration: const BoxDecoration(color: QRTokens.semanticSafe, shape: BoxShape.circle, border: Border.fromBorderSide(BorderSide(color: Colors.white, width: 1.5))),
+              child: const Icon(Icons.check, size: 10, color: Colors.white),
+            ),
+          ),
       ],
     );
   }
