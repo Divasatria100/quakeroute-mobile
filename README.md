@@ -483,51 +483,6 @@ To stop the backend:
 
 ---
 
-## Demo Walkthrough
-
-Designed for a hackathon judge to complete in 3–5 minutes.
-
-```text
-1.  Run .\start-dev.ps1 and flutter run (see Getting Started)
-2.  Open QuakeRoute — accept the Safety Disclaimer (first-run gate)
-3.  Explore the Dynamic Safety Map (user location, shelters, medical facilities)
-4.  Tap the FAB → Report Hazard
-5.  Demonstrate Quick Report: pick a category → confirm location → Submit
-    (return to map — new pin appears)
-6.  Demonstrate Text Report: enter e.g. "Road blocked by debris near the school"
-    → Submit → AI extracts type/severity → confirm
-7.  Demonstrate Photo Report: capture or pick a photo
-    → AI Vision proposes hazard → Confirm / Edit / Reject
-8.  Open Emergency Simulation (via top HUD / Settings → Simulation)
-9.  Move the map beneath the fixed crosshair to choose a simulation center
-10. Select "Use This Location" — note Seed / Radius shown
-11. Select a Destination marker or card — note km distance from simulation origin
-12. Observe the preview route (follows synthetic grid, not straight line)
-13. Pick a scenario — e.g. Blocked Road or High-Risk Hazard — tap Run
-14. Compare Baseline (grey) vs Risk-Aware (blue) routes overlayed on the grid
-15. Run "No Hazard" to see routes overlap; run "Conflicting Reports" to see
-    the uncertainty state
-16. Re-center the map and re-run to show GPS-free reproducible isolation
-```
-
-All simulation runs are isolated and leave the home map untouched.
-
----
-
-## Screenshots
-
-No screenshot image files are currently checked into the repository (`assets/images/` contains only `.gitkeep`). If screenshots are added, place them under `quakeroute-mobile/quakeroute-mobile/assets/images/` and reference with repository-relative paths, e.g.:
-
-```md
-![Dynamic Safety Map](quakeroute-mobile/quakeroute-mobile/assets/images/map.png)
-![Hazard Reporting - Quick Report](quakeroute-mobile/quakeroute-mobile/assets/images/quick-report.png)
-![Emergency Simulation - Comparison](quakeroute-mobile/quakeroute-mobile/assets/images/simulation.png)
-```
-
-Prioritize: Main Map → Hazard Reporting → Emergency Simulation → Destination Selection → Baseline vs Risk-Aware comparison.
-
----
-
 ## Current Limitations
 
 Honest prototype scope — none of these imply the core idea is unfinished.
