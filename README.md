@@ -2,7 +2,13 @@
 
 **QuakeRoute: AI-Powered Post-Earthquake Risk-Aware Navigation**
 
-QuakeRoute is a mobile safety-navigation prototype designed for the critical window after an earthquake, when normal navigation becomes unreliable. Roads that were safe minutes earlier may be blocked by debris, fire, flooding, fallen power lines, or building damage — and conventional shortest-path routers have no way to know. QuakeRoute attempts to make routing decisions based not only on distance, but on **post-earthquake risk information** contributed by the community and interpreted by AI.
+QuakeRoute is a mobile safety navigation prototype designed for the critical period immediately after an earthquake, when road conditions can change rapidly and conventional navigation becomes unreliable. Roads that were safe minutes earlier may suddenly become blocked by debris, fire, flooding, fallen power lines, damaged buildings, or other hazards. At the same time, information about these conditions is often incomplete, unstructured, and constantly changing, making it difficult for conventional shortest path navigation systems to respond effectively.
+
+QuakeRoute addresses this problem by incorporating real time post earthquake risk information into navigation decisions. Users can report hazards through photos, text, and quick reports, allowing the system to build a continuously updated picture of potential risks on the road network. AI is used to interpret and assess these reports, while a risk aware routing system considers the identified hazards when determining a safer alternative route.
+
+Instead of simply finding the shortest path, QuakeRoute aims to answer a more important question in an emergency: **which route is safer given what we currently know about the surrounding risks?**
+
+The prototype demonstrates how community generated hazard information, AI assisted risk understanding, and risk aware routing can work together to support safer navigation when normal road conditions and navigation assumptions can no longer be trusted.
 
 > **Scope:** This is a 10-day hackathon prototype, not a production emergency system. No route is guaranteed safe. The system is a decision-support tool validated in a controlled simulation environment.
 
@@ -476,6 +482,53 @@ To stop the backend:
 ```powershell
 .\stop-dev.ps1   # docker compose down wrapper
 ```
+
+---
+
+## Demo Walkthrough
+
+Designed for a hackathon judge to complete in 3–5 minutes.
+
+```text
+1.  Run .\start-dev.ps1 and flutter run (see Getting Started)
+2.  Open QuakeRoute — accept the Safety Disclaimer (first-run gate)
+3.  Explore the Dynamic Safety Map (user location, shelters, medical facilities)
+4.  Tap the FAB → Report Hazard
+5.  Demonstrate Quick Report: pick a category → confirm location → Submit
+    (return to map — new pin appears)
+6.  Demonstrate Text Report: enter e.g. "Road blocked by debris near the school"
+    → Submit → AI extracts type/severity → confirm
+7.  Demonstrate Photo Report: capture or pick a photo
+    → AI Vision proposes hazard → Confirm / Edit / Reject
+8.  Open Emergency Simulation (via top HUD / Settings → Simulation)
+9.  Move the map beneath the fixed crosshair to choose a simulation center
+10. Select "Use This Location" — note Seed / Radius shown
+11. Select a Destination marker or card — note km distance from simulation origin
+12. Observe the preview route (follows synthetic grid, not straight line)
+13. Pick a scenario — e.g. Blocked Road or High-Risk Hazard — tap Run
+14. Compare Baseline (grey) vs Risk-Aware (blue) routes overlayed on the grid
+15. Run "No Hazard" to see routes overlap; run "Conflicting Reports" to see
+    the uncertainty state
+16. Re-center the map and re-run to show GPS-free reproducible isolation
+```
+
+All simulation runs are isolated and leave the home map untouched.
+
+---
+
+## Screenshots
+
+No screenshot image files are currently checked into the repository (`assets/images/` contains only `.gitkeep`). If screenshots are added, place them under `quakeroute-mobile/quakeroute-mobile/assets/images/` and reference with repository-relative paths, e.g.:
+
+```md
+![Dynamic Safety Map](quakeroute-mobile/quakeroute-mobile/assets/images/map.png)
+![Hazard Reporting - Quick Report](quakeroute-mobile/quakeroute-mobile/assets/images/quick-report.png)
+![Emergency Simulation - Comparison](quakeroute-mobile/quakeroute-mobile/assets/images/simulation.png)
+```
+
+Prioritize: Main Map → Hazard Reporting → Emergency Simulation → Destination Selection → Baseline vs Risk-Aware comparison.
+
+---
 
 ## Current Limitations
 
