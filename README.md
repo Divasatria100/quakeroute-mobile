@@ -28,8 +28,6 @@ The prototype demonstrates how community generated hazard information, AI assist
 - [Tech Stack](#tech-stack)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
-- [Demo Walkthrough](#demo-walkthrough)
-- [Screenshots](#screenshots)
 - [Current Limitations](#current-limitations)
 - [Future Improvements](#future-improvements)
 - [Hackathon Impact](#hackathon-impact)
