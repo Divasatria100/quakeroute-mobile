@@ -36,9 +36,13 @@ The prototype demonstrates how community generated hazard information, AI assist
 
 ## Demo
 
-No public demo video URL is currently committed in the repository. Demo is performed live via the **Emergency Simulation** inside the app (see [Demo Walkthrough](#demo-walkthrough)).
+Watch the **QuakeRoute Demo** on YouTube:
 
-Screenshots and architecture diagrams live in `docs/`; no pre-rendered screenshot assets are currently checked into the repository.
+https://youtu.be/yyYmhJ6Es-4
+
+The demo showcases the main application flow, hazard reporting, destination selection, Emergency Simulation, risk aware routing, and alternative route recommendations.
+
+Screenshots and architecture diagrams are available in `docs/`.
 
 ---
 
